@@ -519,10 +519,11 @@ class Broker(object):
 
 			endpoint = f'/v1/{self.strategyId}/orders/{self.brokerId}'
 			payload = {
-
+				
 			}
 			self._session.post(
-				self._url + endpoint
+				self._url + endpoint,
+				data=json.dumps(payload)
 			)
 
 			for account_id in accounts:
@@ -583,7 +584,7 @@ class Broker(object):
 			self._session.post(
 				self._url + endpoint
 			)
-			
+
 			for account_id in accounts:
 				res.update(self.api.sell(
 					product, lotsize, account_id, order_type=order_type,
@@ -706,6 +707,8 @@ class Broker(object):
 		positions = copy(positions)
 
 		result = []
+
+
 
 		for pos in positions:
 			pos.close()
