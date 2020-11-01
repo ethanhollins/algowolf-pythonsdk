@@ -13,7 +13,7 @@ import shortuuid
 import traceback
 from copy import copy
 from enum import Enum
-from app import pythonsdk as tl
+import app as tl
 
 
 '''
@@ -53,11 +53,6 @@ class BrokerItem(dict):
 		self[key] = value
 
 
-from .app import App
-
-URI = 'http://127.0.0.1'
-PORT = 5000
-
 '''
 Parent Broker Class
 '''
@@ -67,9 +62,9 @@ class Broker(object):
 	# 	'name', 'controller', 'charts', 'positions', 'closed_positions', 'orders', 
 	# 	'on_tick', 'on_new_bar', 'on_trade', 'on_stop_loss', 'on_take_profit'
 	# )
-	def __init__(self, strategy, api, strategy_id=None, broker_id=None, data_path='data/'):
+	def __init__(self, app, strategy, strategy_id=None, broker_id=None, data_path='data/'):
+		self._app = app
 		self.strategy = strategy
-		self.api = api
 		self.strategyId = strategy_id
 		self.brokerId = broker_id
 
@@ -83,7 +78,6 @@ class Broker(object):
 		self.isClearBacktestTrades = False
 		self._start_from = None
 		self._data_path = data_path
-		self._app = None
 
 		# Containers
 		self.accounts = ['ACCOUNT_1']
@@ -92,6 +86,14 @@ class Broker(object):
 		self.orders = []
 		self.ontrade_subs = []
 		self.handled = {}
+
+		self._session = requests.Session()
+		self._session.headers.update({
+			'Authorization': 'Bearer '+self._app.key,
+			'Connection': 'keep-alive',
+			'Content-Type': 'application/json'
+		})
+		self._url = self._app.config.get('API_URL')
 
 
 	'''
@@ -288,9 +290,6 @@ class Broker(object):
 	'''
 	def generateReference(self):
 		return shortuuid.uuid()
-
-	def setApp(self, app):
-		self._app = app
 
 	def setName(self, name):
 		self.name = name
@@ -517,6 +516,15 @@ class Broker(object):
 
 		else:
 			res = {}
+
+			endpoint = f'/v1/{self.strategyId}/orders/{self.brokerId}'
+			payload = {
+
+			}
+			self._session.post(
+				self._url + endpoint
+			)
+
 			for account_id in accounts:
 				res.update(self.api.buy(
 					product, lotsize, account_id, order_type=order_type,
@@ -567,6 +575,15 @@ class Broker(object):
 
 		else:
 			res = {}
+
+			endpoint = f'/v1/{self.strategyId}/orders/{self.brokerId}'
+			payload = {
+				
+			}
+			self._session.post(
+				self._url + endpoint
+			)
+			
 			for account_id in accounts:
 				res.update(self.api.sell(
 					product, lotsize, account_id, order_type=order_type,

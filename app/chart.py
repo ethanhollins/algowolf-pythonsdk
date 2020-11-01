@@ -520,7 +520,7 @@ class Chart(object):
 Imports
 '''
 
-from app import pythonsdk as tl
+import app as tl
 from .broker import State, BrokerItem
 from .error import TradelibException
 

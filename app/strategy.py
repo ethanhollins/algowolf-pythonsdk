@@ -2,7 +2,8 @@ import json
 import time
 import math
 import socketio
-from app import pythonsdk as tl
+import requests
+import app as tl
 from .broker import Broker, BacktestMode, State
 from threading import Thread
 
@@ -13,13 +14,13 @@ MAX_GUI = 200
 
 class Strategy(object):
 
-	def __init__(self, api, module, strategy_id=None, broker_id=None, account_id=None, user_variables={}, data_path='data/'):
+	def __init__(self, app, module, strategy_id=None, broker_id=None, account_id=None, user_variables={}, data_path='data/'):
 		# Retrieve broker type
-		self.api = api
+		self.app = app
 		self.module = module
 		self.strategyId = strategy_id
 		self.brokerId = broker_id
-		self.broker = Broker(self, self.api, strategy_id=self.strategyId, broker_id=self.brokerId, data_path=data_path)
+		self.broker = Broker(app, self, strategy_id=self.strategyId, broker_id=self.brokerId, data_path=data_path)
 		self.account_id = account_id
 
 		# GUI Queues
@@ -56,7 +57,7 @@ class Strategy(object):
 
 	def _connect_user_input(self):
 		sio = socketio.Client()
-		sio.connect(self.api.ctrl.app.config['STREAM_URL'], namespaces=['/user'])
+		sio.connect(self.app.config['STREAM_URL'], namespaces=['/user'])
 		# sio.emit('onuserupdate', )
 
 
@@ -224,7 +225,7 @@ class Strategy(object):
 			}
 
 			# Send Gui Socket Message
-			self.api.ctrl.sio.emit(
+			self.app.sio.emit(
 				'ongui', 
 				{'strategy_id': self.strategyId, 'item': item}, 
 				namespace='/admin'
@@ -251,7 +252,7 @@ class Strategy(object):
 			}
 
 			# Send Gui Socket Message
-			self.api.ctrl.sio.emit(
+			self.app.sio.emit(
 				'ongui', 
 				{'strategy_id': self.strategyId, 'item': item}, 
 				namespace='/admin'
@@ -278,7 +279,7 @@ class Strategy(object):
 			}
 
 			# Send Gui Socket Message
-			self.api.ctrl.sio.emit(
+			self.app.sio.emit(
 				'ongui', 
 				{'strategy_id': self.strategyId, 'item': item}, 
 				namespace='/admin'
@@ -309,7 +310,7 @@ class Strategy(object):
 			}
 
 			# Send Gui Socket Message
-			self.api.ctrl.sio.emit(
+			self.app.sio.emit(
 				'ongui', 
 				{'strategy_id': self.strategyId, 'item': item}, 
 				namespace='/admin'
@@ -347,7 +348,7 @@ class Strategy(object):
 			}
 
 			# Send Gui Socket Message
-			self.api.ctrl.sio.emit(
+			self.app.sio.emit(
 				'ongui', 
 				{'strategy_id': self.strategyId, 'item': item}, 
 				namespace='/admin'
@@ -495,9 +496,6 @@ class Strategy(object):
 
 			return self.input_variables[name]['value']
 
-
-	def setApp(self, app):
-		self.getBroker().setApp(app)
 
 	def setTick(self, tick):
 		self.lastTick = tick

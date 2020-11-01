@@ -304,6 +304,6 @@ class RSI(Indicator):
 Imports
 '''
 
-from app import pythonsdk as tl
+import app as tl
 
 

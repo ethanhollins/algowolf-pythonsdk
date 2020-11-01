@@ -5,64 +5,53 @@ import json
 import time
 import traceback
 import os
+import socketio
 from datetime import datetime, timedelta
 from threading import Thread
 
-STRATEGY_PACKAGE = 'app.strategies'
+class App(object):
 
-class App(dict):
-
-	def __init__(self, api, package, strategy_id, broker_id):
+	def __init__(self, config, package, strategy_id, broker_id, account_id):
 		if package.endswith('.py'):
-			package = package.strip('.py')
-		self.api = api
+			package = package.replace('.py', '')
+			
+		self.config = config
 		self.package = package
 		self.strategyId = strategy_id
 		self.brokerId = broker_id
+		self.account_id = account_id
+
+		self.sio = self.setupSio()
 
 		# Containers
-		self.strategies = {}
+		self.strategy = None
+		self.module = None
 		self.indicators = []
 		self.charts = []
 
 
-	# Enable use of dot operators
-	def __getattr__(self, key):
-		return self[key]
-
-	def __setattr__(self, key, value):
-		self[key] = value
+	def setupSio(self):
+		self.sio.connect(self.config.get('STREAM_URL'), namespaces=['/admin'])
 
 
 	# TODO: Add accounts parameter
-	def run(self, accounts, input_variables):
+	def run(self, input_variables):
 		# Start strategy for each account
-		starting = []
-		for account_id in accounts:
-			self.startStrategy(account_id, input_variables)
-			if self.strategies[account_id].get('strategy').getBroker().state.value <= 2:
-				# Run strategy
-				t = Thread(target=self.strategies[account_id].get('strategy').run)
-				t.start()
-				starting.append((account_id, t))
+		self.startStrategy(input_variables)
+		if self.strategy.getBroker().state.value <= 2:
+			# Run strategy
+			self.strategy.run()
 
-		# Join threads
-		for t in starting:
-			t[1].join()
-
-		for t in starting:
-			module = self.strategies[t[0]].get('module')
-			# Call strategy onStart
-			if 'onStart' in dir(module) and callable(module.onStart):
-				module.onStart()
+		# Call strategy onStart
+		if 'onStart' in dir(self.module) and callable(self.module.onStart):
+			self.module.onStart()
 
 
-	def stop(self, accounts):
-		for account_id in accounts:
-			if account_id in self.strategies:
-				strategy = self.strategies[account_id].get('strategy')
-				strategy.stop()
-				del self.strategies[account_id]
+	def stop(self):
+		if self.strategy is not None:
+			self.strategy.get('strategy').stop()
+			self.strategy = None
+			self.module = None
 
 
 	def backtest(self, _from, to, mode, input_variables):
@@ -125,44 +114,43 @@ class App(dict):
 		return module
 
 	def startStrategy(self, account_id, input_variables):
-		if account_id not in self.strategies:
-			module = self.getPackageModule(f'{STRATEGY_PACKAGE}.{self.package}')
+		if self.strategy is None:
+			self.module = self.getPackageModule(f'{self.package}')
 
-			strategy = Strategy(self.api, module, strategy_id=self.strategyId, broker_id=self.brokerId, account_id=account_id, user_variables=input_variables)
-			strategy.setApp(self)
-			
-			self.strategies[account_id] = {
-				'strategy': strategy,
-				'module': module
-			}
+			self.strategy = Strategy(module, strategy_id=self.strategyId, broker_id=self.brokerId, account_id=account_id, user_variables=input_variables)
+			self.strategy.setApp(self)
 
 			# Set global variables
-			module.print = strategy.log
+			self.module.print = strategy.log
 
-			module.strategy = strategy
-			module.utils = tl.utils
-			module.product = tl.product
-			module.period = tl.period
-			module.indicator = tl.indicator
+			self.module.strategy = strategy
+			self.module.utils = tl.utils
+			self.module.product = tl.product
+			self.module.period = tl.period
+			self.module.indicator = tl.indicator
 			for i in dir(tl.constants):
-				vars(module)[i] = vars(tl.constants)[i]
+				vars(self.module)[i] = vars(tl.constants)[i]
 
 			# Initialize strategy
-			if 'init' in dir(module) and callable(module.init):
-				module.init()
+			if 'init' in dir(self.module) and callable(self.module.init):
+				self.module.init()
 
 			# Search for convertional function names
-			if 'onTrade' in dir(module) and callable(module.onTrade):
-				strategy.getBroker().subscribeOnTrade(module.onTrade)
+			if 'onTrade' in dir(self.module) and callable(self.module.onTrade):
+				self.strategy.getBroker().subscribeOnTrade(self.module.onTrade)
 
-			if 'onTick' in dir(module) and callable(module.onTick):
-				for chart in strategy.getBroker().getAllCharts():
+			if 'onTick' in dir(self.module) and callable(self.module.onTick):
+				for chart in self.strategy.getBroker().getAllCharts():
 					for period in chart.periods:
-						chart.subscribe(period, module.onTick)
+						chart.subscribe(period, self.module.onTick)
 
 
-	def getStrategy(self, account_id):
-		return self.strategies.get(account_id)
+	def getStrategy(self):
+		return self.strategy
+
+
+	def getModule(self):
+		return self.module
 
 
 	def addChart(self, chart):
@@ -183,4 +171,4 @@ Imports
 
 from .strategy import Strategy
 from .error import BrokerlibException, TradelibException
-from app import pythonsdk as tl
+import app as tl

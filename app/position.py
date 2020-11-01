@@ -186,8 +186,8 @@ class BacktestPosition(Position):
 '''
 Imports
 '''
-from app import pythonsdk as tl
-from app.pythonsdk.error import BrokerException
+import app as tl
+from app.error import BrokerException
 
 
 
