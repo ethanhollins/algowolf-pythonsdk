@@ -70,22 +70,27 @@ class Order(dict):
 
 
 	def cancel(self):
-		order = self._broker.api.getOrderByID(self.order_id)
-		if order is not None:
-			result = self
-			res = order.cancel(override=True)
 
-			for ref_id, item in res.items():
-				if item.get('accepted'):
-					func = self._broker._get_trade_handler(item.get('type'))
-					result = self._broker._wait(ref_id, func, (ref_id, item))
-				else:
-					return self
+		endpoint = f'/v1/{self._broker.strategyId}/orders/{self._broker.brokerId}'
+		payload = {
+			"items": [{
+				"order_id": self.order_id
+			}]
+		}
 
-			return result
+		res = self._broker._session.delete(
+			self._broker._url + endpoint,
+			data=json.dumps(payload)
+		)
+		res = res.json()
 
-		else:
-			return self
+		result = self
+		for ref_id, item in res.items():
+			if item.get('accepted'):
+				func = self._broker._get_trade_handler(item.get('type'))
+				result = self._broker._wait(ref_id, func, (ref_id, item))
+
+		return result
 
 
 	def close(self):
@@ -98,25 +103,33 @@ class Order(dict):
 		sl_range=None, tp_range=None,
 		sl_price=None, tp_price=None
 	):
-		order = self._broker.api.getOrderByID(self.order_id)
-		if order is not None:
-			res = order.modify(
-				lotsize, entry_range, entry_price, 
-				sl_range, tp_range, sl_price, tp_price, 
-				override=True
-			)
+		endpoint = f'/v1/{self._broker.strategyId}/orders/{self._broker.brokerId}'
+		payload = {
+			"items": [{
+				"order_id": self.order_id,
+				"entry_range": entry_range,
+				"entry_price": entry_price,
+				"sl_range": sl_range,
+				"tp_range": tp_range,
+				"sl_price": sl_price,
+				"tp_price": tp_price
+			}]
+		}
 
-			for ref_id, item in res.items():
-				if item.get('accepted'):
-					func = self._broker._get_trade_handler(item.get('type'))
-					wait_result = self._broker._wait(ref_id, func, (ref_id, item))
-				else:
-					return self
+		res = self._broker._session.put(
+			self._broker._url + endpoint,
+			data=json.dumps(payload)
+		)
+		res = res.json()
 
-			return self
+		for ref_id, item in res.items():
+			if item.get('accepted'):
+				func = self._broker._get_trade_handler(item.get('type'))
+				wait_result = self._broker._wait(ref_id, func, (ref_id, item))
+			else:
+				return self
 
-		else:
-			return self
+		return self
 
 
 	def modifyEntry(self, entry_range=None, entry_price=None):

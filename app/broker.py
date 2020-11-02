@@ -102,21 +102,19 @@ class Broker(object):
 	'''
 
 	# TODO: DO TOKENS INSTEAD and VALIDATION
-	def run(self, broker_id=None):
-		if self.brokerId is None:
-			self.brokerId = broker_id
-
+	def run(self):
 		self.setName(self.api.name)
 		self.brokerId = self.api.brokerId
 		self.accounts = self.api.getAccounts()
 
+		self._app.sio.on('connect', handler=self._stream_connect, namespace='/user')
+		self._app.sio.on('disconnect', handler=self._stream_disconnect, namespace='/user')
+		self._app.sio.on('ontick', handler=self._stream_ontick, namespace='/user')
+		self._app.sio.on('ontrade', handler=self._stream_ontrade, namespace='/user')
+
 		# Subscribe all charts
 		self._chart_subs = {}
 		self._subscribe_charts(self.charts)
-
-		# Subscribe on trade
-		self._on_trade_subs = []
-		self._subscribe_on_trade()
 
 		# If `_start_from` set, run `_backtest_and_run`
 		if self._start_from is not None:
@@ -146,9 +144,6 @@ class Broker(object):
 				if period in self._chart_subs[api_chart.product]:
 					for sub_id in self._chart_subs[api_chart.product][period]:
 						api_chart.unsubscribe(period, self.brokerId, sub_id)
-
-		for sub_id in self._on_trade_subs:
-			self.api.unsubscribeOnTrade(sub_id)
 
 
 	def startFrom(self, dt):
@@ -316,12 +311,6 @@ class Broker(object):
 					period, self.brokerId, 
 					ref_id, self._stream_ontick
 				)
-
-
-	def _subscribe_on_trade(self):
-		ref_id = self.generateReference()
-		self._on_trade_subs.append(ref_id)
-		self.api.subscribeOnTrade(self._stream_ontrade, ref_id)
 
 
 	def _prepare_for_live(self):
@@ -515,26 +504,26 @@ class Broker(object):
 
 
 		else:
-			res = {}
-
 			endpoint = f'/v1/{self.strategyId}/orders/{self.brokerId}'
 			payload = {
-				
+				'product': product,
+				'lotsize': lotsize,
+				'accounts': accounts,
+				'direction': tl.LONG,
+				'order_type': order_type,
+				'entry_range': entry_range,
+				'entry_price': entry_price,
+				'sl_range': sl_range,
+				'sl_price': sl_price,
+				'tp_range': tp_range,
+				'tp_price': tp_price
 			}
-			self._session.post(
+			res = self._session.post(
 				self._url + endpoint,
 				data=json.dumps(payload)
 			)
 
-			for account_id in accounts:
-				res.update(self.api.buy(
-					product, lotsize, account_id, order_type=order_type,
-					entry_range=entry_range, entry_price=entry_price,
-					sl_range=sl_range, tp_range=tp_range,
-					sl_price=sl_price, tp_price=tp_price,
-					override=True
-				))
-
+			res = res.json()
 			for ref_id, item in res.items():
 				if item.get('accepted'):
 					func = self._get_trade_handler(item.get('type'))
@@ -551,8 +540,8 @@ class Broker(object):
 		sl_range=None, tp_range=None,
 		sl_price=None, tp_price=None
 	):
+		result = []
 		if not self.isLive():
-			result = []
 			if order_type == tl.MARKET_ORDER:
 				for account_id in accounts:
 					result.append(self.backtester.createPosition(
@@ -575,26 +564,26 @@ class Broker(object):
 			return result
 
 		else:
-			res = {}
-
 			endpoint = f'/v1/{self.strategyId}/orders/{self.brokerId}'
 			payload = {
-				
+				'product': product,
+				'lotsize': lotsize,
+				'accounts': accounts,
+				'direction': tl.SHORT,
+				'order_type': order_type,
+				'entry_range': entry_range,
+				'entry_price': entry_price,
+				'sl_range': sl_range,
+				'sl_price': sl_price,
+				'tp_range': tp_range,
+				'tp_price': tp_price
 			}
-			self._session.post(
-				self._url + endpoint
+			res = self._session.post(
+				self._url + endpoint,
+				data=json.dumps(payload)
 			)
 
-			for account_id in accounts:
-				res.update(self.api.sell(
-					product, lotsize, account_id, order_type=order_type,
-					entry_range=entry_range, entry_price=entry_price,
-					sl_range=sl_range, tp_range=tp_range,
-					sl_price=sl_price, tp_price=tp_price,
-					override=True
-				))
-
-			result = []
+			res = res.json()
 			for ref_id, item in res.items():
 				if item.get('accepted'):
 					func = self._get_trade_handler(item.get('type'))
@@ -707,9 +696,6 @@ class Broker(object):
 		positions = copy(positions)
 
 		result = []
-
-
-
 		for pos in positions:
 			pos.close()
 			result.append(pos)
@@ -843,6 +829,7 @@ class Broker(object):
 		item = self.handled[ref]
 		del self.handled[ref]
 		return item
+
 
 
 	def _stream_ontrade(self, items):

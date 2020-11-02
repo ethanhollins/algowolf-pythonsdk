@@ -97,41 +97,57 @@ class Position(dict):
 	def close(self, lotsize=None):
 		if not lotsize: lotsize = self.lotsize
 
-		pos = self._broker.api.getPositionByID(self.order_id)
-		if pos is not None:
-			res = pos.close(lotsize, override=True)
-		
-			result = self
-			for ref_id, item in res.items():
-				if item.get('accepted'):
-					func = self._broker._get_trade_handler(item.get('type'))
-					result = self._broker._wait(ref_id, func, (ref_id, item))
+		endpoint = f'/v1/{self._broker.strategyId}/positions/{self._broker.brokerId}'
+		payload = {
+			"items": [{
+				"order_id": self.order_id,
+				"lotsize": lotsize
+			}]
+		}
 
-			return result
-		else:
-			print('[CLOSE] POS IS NONE')
-			return self
+		res = self._broker._session.delete(
+			self._broker._url + endpoint,
+			data=json.dumps(payload)
+		)
+		res = res.json()
+	
+		result = self
+		for ref_id, item in res.items():
+			if item.get('accepted'):
+				func = self._broker._get_trade_handler(item.get('type'))
+				result = self._broker._wait(ref_id, func, (ref_id, item))
+
+		return result
 
 
 	def modify(self, 
 		sl_range=None, tp_range=None,
 		sl_price=None, tp_price=None
 	):
-		pos = self._broker.api.getPositionByID(self.order_id)
-		if pos is not None:
-			res = pos.modify(
-				sl_range, tp_range, sl_price, tp_price, override=True
-			)
 
-			for ref_id, item in res.items():
-				if item.get('accepted'):
-					func = self._broker._get_trade_handler(item.get('type'))
-					wait_result = self._broker._wait(ref_id, func, (ref_id, item))
+		endpoint = f'/v1/{self._broker.strategyId}/positions/{self._broker.brokerId}'
+		payload = {
+			"items": [{
+				"order_id": self.order_id,
+				"sl_range": sl_range,
+				"tp_range": tp_range,
+				"sl_price": sl_price,
+				"tp_price": tp_price
+			}]
+		}
 
-			return self
-		else:
-			print('[MODIFY] POS IS NONE')
-			return self
+		res = self._broker._session.put(
+			self._broker._url + endpoint,
+			data=json.dumps(payload)
+		)
+		res = res.json()
+
+		for ref_id, item in res.items():
+			if item.get('accepted'):
+				func = self._broker._get_trade_handler(item.get('type'))
+				wait_result = self._broker._wait(ref_id, func, (ref_id, item))
+
+		return self
 	
 
 	def modifySL(self, sl_range=None, sl_price=None):

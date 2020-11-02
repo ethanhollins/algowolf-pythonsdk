@@ -117,8 +117,7 @@ class App(object):
 		if self.strategy is None:
 			self.module = self.getPackageModule(f'{self.package}')
 
-			self.strategy = Strategy(module, strategy_id=self.strategyId, broker_id=self.brokerId, account_id=account_id, user_variables=input_variables)
-			self.strategy.setApp(self)
+			self.strategy = Strategy(self, module, strategy_id=self.strategyId, broker_id=self.brokerId, account_id=account_id, user_variables=input_variables)
 
 			# Set global variables
 			self.module.print = strategy.log
