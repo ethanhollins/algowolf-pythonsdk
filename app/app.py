@@ -11,7 +11,7 @@ from threading import Thread
 
 class App(object):
 
-	def __init__(self, config, package, strategy_id, broker_id, account_id):
+	def __init__(self, config, package, strategy_id, broker_id, account_id, key):
 		if package.endswith('.py'):
 			package = package.replace('.py', '')
 			
@@ -20,6 +20,7 @@ class App(object):
 		self.strategyId = strategy_id
 		self.brokerId = broker_id
 		self.account_id = account_id
+		self.key = key
 
 		self.sio = self.setupSio()
 
@@ -170,4 +171,4 @@ Imports
 
 from .strategy import Strategy
 from .error import BrokerlibException, TradelibException
-import app as tl
+from .. import app as tl

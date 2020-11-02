@@ -1,0 +1,7 @@
+numpy
+pandas
+requests
+shortuuid
+python-socketio[client]
+pendulum
+click

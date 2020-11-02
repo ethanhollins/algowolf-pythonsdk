@@ -387,24 +387,20 @@ class Chart(object):
 
 
 	def connectAll(self):
-		for period in self.periods:
-			# Check if no existing connection exists
-			if not period in self._connections:	
-				# Emit socket ontick subscribe message
-				self.strategy.getBroker().sio.emit(
-					'subscribe',
-					{
-						'strategy_id': self.strategy.getBroker().strategyId,
-						'field': 'ontick',
-						'items': [{
-							'broker': self.strategy.getBroker().name,
-							'product': self.product,
-							'period': period
-						}]
-					},
-					namespace='/user'
-				)
-				self._connections.append(period)
+		periods = [period for period in self.periods if period not in self._connections]
+		# Emit socket ontick subscribe message
+		self.strategy.app.sio.emit(
+			'subscribe',
+			{
+				'strategy_id': self.strategy.brokerId,
+				'field': 'ontick',
+				'items': {
+					self.product: periods
+				}
+			},
+			namespace='/user'
+		)
+		self._connections += periods
 
 
 	def subscribe(self, period, func):
@@ -520,7 +516,7 @@ class Chart(object):
 Imports
 '''
 
-import app as tl
+from .. import app as tl
 from .broker import State, BrokerItem
 from .error import TradelibException
 

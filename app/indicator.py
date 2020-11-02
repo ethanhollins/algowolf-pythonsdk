@@ -304,6 +304,6 @@ class RSI(Indicator):
 Imports
 '''
 
-import app as tl
+from .. import app as tl
 
 

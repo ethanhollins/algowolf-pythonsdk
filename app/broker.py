@@ -13,8 +13,7 @@ import shortuuid
 import traceback
 from copy import copy
 from enum import Enum
-import app as tl
-
+from .. import app as tl
 
 '''
 Broker Names
@@ -113,7 +112,6 @@ class Broker(object):
 		self._app.sio.on('ontrade', handler=self._stream_ontrade, namespace='/user')
 
 		# Subscribe all charts
-		self._chart_subs = {}
 		self._subscribe_charts(self.charts)
 
 		# If `_start_from` set, run `_backtest_and_run`
@@ -296,21 +294,7 @@ class Broker(object):
 
 	def _subscribe_charts(self, charts):
 		for chart in charts:
-			api_chart = self.api.getChart(chart.product)
-
-			if chart.product not in self._chart_subs:
-				self._chart_subs[chart.product] = {}
-
-			for period in chart.periods:
-				if period not in self._chart_subs[chart.product]:
-					self._chart_subs[chart.product][period] = []
-
-				ref_id = self.generateReference()
-				self._chart_subs[chart.product][period].append(ref_id)
-				api_chart.subscribe(
-					period, self.brokerId, 
-					ref_id, self._stream_ontick
-				)
+			chart.connectAll()
 
 
 	def _prepare_for_live(self):

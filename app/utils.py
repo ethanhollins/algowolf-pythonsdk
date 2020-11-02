@@ -121,6 +121,5 @@ def isCurrentBar(period, ts, off=1):
 '''
 Imports
 '''
-import app as tl
-
+from .. import app as tl
 

@@ -1094,5 +1094,5 @@ class OandaBacktester(Backtester):
 '''
 Imports
 '''
-from app import pythonsdk as tl
+from .. import app as tl
 from .broker import BrokerItem

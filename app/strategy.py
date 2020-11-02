@@ -3,10 +3,9 @@ import time
 import math
 import socketio
 import requests
-import app as tl
+from .. import app as tl
 from .broker import Broker, BacktestMode, State
 from threading import Thread
-
 
 SAVE_INTERVAL = 60 # Seconds
 MAX_GUI = 200
@@ -37,15 +36,8 @@ class Strategy(object):
 
 		# self.sio = self._connect_user_input()
 
-	def run(self, auth_key=None, strategy_id=None, broker_id=None, account_id=None):
-		if self.strategyId is None:
-			self.strategyId = strategy_id
-		if self.brokerId is None:
-			self.brokerId = broker_id
-		if self.account_id is None:
-			self.account_id = account_id
-
-		self.broker.run(self.brokerId)
+	def run(self):
+		self.broker.run()
 
 	def stop(self):
 		self.broker.stop()
