@@ -11,18 +11,17 @@ from threading import Thread
 
 class App(object):
 
-	def __init__(self, config, package, strategy_id, broker_id, account_id, key):
+	def __init__(self, config, package, strategy_id, account_code, key):
 		if package.endswith('.py'):
 			package = package.replace('.py', '')
 			
 		self.config = config
-		self.package = package
+		self.scriptId, self.package = package.split('.')
 		self.strategyId = strategy_id
-		self.brokerId = broker_id
-		self.account_id = account_id
+		self.brokerId, self.accountId = self._convert_account_code(account_code)
 		self.key = key
 
-		self.sio = self.setupSio()
+		self.sio = self._setup_sio()
 
 		# Containers
 		self.strategy = None
@@ -30,9 +29,25 @@ class App(object):
 		self.indicators = []
 		self.charts = []
 
+		sys.path.append(os.path.join(config.get('SCRIPTS_PATH'), self.scriptId))
 
-	def setupSio(self):
-		self.sio.connect(self.config.get('STREAM_URL'), namespaces=['/admin'])
+
+	def _convert_account_code(self, account_code):
+		return account_code.split('.')
+
+
+	def _setup_sio(self):
+		headers = {
+			'Authorization': 'Bearer '+self.key
+		}
+
+		sio = socketio.Client()
+		sio.connect(
+			self.config.get('STREAM_URL'), 
+			namespaces=['/admin', '/user'],
+			headers=headers
+		)
+		return sio
 
 
 	# TODO: Add accounts parameter
@@ -109,21 +124,22 @@ class App(object):
 		# sys.modules[spec.name] = module
 		spec.loader.exec_module(module)
 
-		if '__version__' in dir(module):
-			return self.getPackageModule(package + '.' + module.__version__)
+		# if '__version__' in dir(module):
+		# 	return self.getPackageModule(package + '.' + module.__version__)
 
 		return module
 
-	def startStrategy(self, account_id, input_variables):
+	def startStrategy(self, input_variables):
 		if self.strategy is None:
 			self.module = self.getPackageModule(f'{self.package}')
 
-			self.strategy = Strategy(self, module, strategy_id=self.strategyId, broker_id=self.brokerId, account_id=account_id, user_variables=input_variables)
+			self.strategy = Strategy(self, self.module, strategy_id=self.strategyId, broker_id=self.brokerId, account_id=self.accountId, user_variables=input_variables)
+
 
 			# Set global variables
-			self.module.print = strategy.log
+			self.module.print = self.strategy.log
 
-			self.module.strategy = strategy
+			self.module.strategy = self.strategy
 			self.module.utils = tl.utils
 			self.module.product = tl.product
 			self.module.period = tl.period

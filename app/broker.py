@@ -14,6 +14,7 @@ import traceback
 from copy import copy
 from enum import Enum
 from .. import app as tl
+from .app import App
 
 '''
 Broker Names
@@ -61,14 +62,14 @@ class Broker(object):
 	# 	'name', 'controller', 'charts', 'positions', 'closed_positions', 'orders', 
 	# 	'on_tick', 'on_new_bar', 'on_trade', 'on_stop_loss', 'on_take_profit'
 	# )
-	def __init__(self, app, strategy, strategy_id=None, broker_id=None, data_path='data/'):
+	def __init__(self, app, strategy, strategy_id=None, broker_id=None, account_id=None, data_path='data/'):
 		self._app = app
 		self.strategy = strategy
 		self.strategyId = strategy_id
 		self.brokerId = broker_id
+		self.accountId = account_id
 
 		self.name = None
-		self.brokerId = None
 		self.state = State.IDLE
 		self.backtester = None
 		self.isUploadBacktest = False
@@ -79,7 +80,6 @@ class Broker(object):
 		self._data_path = data_path
 
 		# Containers
-		self.accounts = ['ACCOUNT_1']
 		self.charts = []
 		self.positions = []
 		self.orders = []
@@ -102,9 +102,10 @@ class Broker(object):
 
 	# TODO: DO TOKENS INSTEAD and VALIDATION
 	def run(self):
-		self.setName(self.api.name)
-		self.brokerId = self.api.brokerId
-		self.accounts = self.api.getAccounts()
+
+		strategy_info = self._initialize_strategy()
+		print(strategy_info['brokers'][self.brokerId]['broker'])
+		self.setName(strategy_info['brokers'][self.brokerId]['broker'])
 
 		self._app.sio.on('connect', handler=self._stream_connect, namespace='/user')
 		self._app.sio.on('disconnect', handler=self._stream_disconnect, namespace='/user')
@@ -136,12 +137,14 @@ class Broker(object):
 		print('STOPPED')
 		self.state = State.STOPPED
 
-		for product in self._chart_subs:
-			api_chart = self.api.getChart(product)
-			for period in self._chart_subs[product]:
-				if period in self._chart_subs[api_chart.product]:
-					for sub_id in self._chart_subs[api_chart.product][period]:
-						api_chart.unsubscribe(period, self.brokerId, sub_id)
+		# for product in self._chart_subs:
+		# 	api_chart = self.api.getChart(product)
+		# 	for period in self._chart_subs[product]:
+		# 		if period in self._chart_subs[api_chart.product]:
+		# 			for sub_id in self._chart_subs[api_chart.product][period]:
+		# 				api_chart.unsubscribe(period, self.brokerId, sub_id)
+		self._app.sio.disconnect()
+
 
 
 	def startFrom(self, dt):
@@ -292,6 +295,18 @@ class Broker(object):
 			self.backtester = tl.IGBacktester(self)
 
 
+	def _initialize_strategy(self):
+		endpoint = f'/v1/strategy/{self.strategyId}/init'
+		res = self._session.post(
+			self._url + endpoint
+		)
+
+		if res.status_code == 200:
+			return res.json()
+		else:
+			print(res.json())
+
+
 	def _subscribe_charts(self, charts):
 		for chart in charts:
 			chart.connectAll()
@@ -341,10 +356,6 @@ class Broker(object):
 		return self._create_chart(product, *periods)
 
 
-	def getApiChart(self, product):
-		return self.api.getChart(product)
-
-
 	def chartExists(self, product):
 		for chart in self.charts:
 			if chart.isChart(self, product):
@@ -386,10 +397,25 @@ class Broker(object):
 		return int(self.getChart(product).getTimestamp(period))
 
 	def updateAllPositions(self):
-		self.positions = (
-			[pos for pos in self.positions if pos.isBacktest()] +
-			[tl.position.Position.fromDict(self, pos) for pos in self.api.getAllPositions() if pos.account_id in self.accounts]
+		endpoint = f'/v1/brokers/{self.brokerId}/positions'
+		res = self._session.get(
+			self._url + endpoint
 		)
+
+		status_code = res.status_code
+		if status_code == 200:
+			data = res.json()
+			for account_id in data:
+				if account_id == self.accountId:
+					self.positions = (
+						[pos for pos in self.positions if pos.isBacktest()] +
+						[tl.position.Position.fromDict(self, pos) for pos in data[account_id]]
+					)
+			print(self.positions)
+		else:
+			print(res.json())
+			pass
+
 
 	def getAllPositions(self, account_id=None):
 		return [
@@ -404,10 +430,23 @@ class Broker(object):
 		return None
 
 	def updateAllOrders(self):
-		self.orders = (
-			[order for order in self.orders if order.isBacktest()] +
-			[tl.order.Order.fromDict(self, order) for order in self.api.getAllOrders() if order.account_id in self.accounts]
+		endpoint = f'/v1/brokers/{self.brokerId}/orders'
+		res = self._session.get(
+			self._url + endpoint
 		)
+
+		status_code = res.status_code
+		if status_code == 200:
+			data = res.json()
+			for account_id in data:
+				if account_id == self.accountId:
+					self.orders = (
+						[order for order in self.orders if order.isBacktest()] +
+						[tl.order.Order.fromDict(self, order) for order in data[account_id]]
+					)
+			print(self.orders)
+		else:
+			pass
 
 	def getAllOrders(self, account_id=None):
 		return [
@@ -430,9 +469,6 @@ class Broker(object):
 	def updateAccountInfo(self):
 		info = self.api.getAccountInfo(accounts, override=True)
 
-	# Public
-	def getAccounts(self):
-		return self.accounts
 
 	def getAccountInfo(self, accounts=[]):
 		if self.isLive():
@@ -488,7 +524,7 @@ class Broker(object):
 
 
 		else:
-			endpoint = f'/v1/{self.strategyId}/orders/{self.brokerId}'
+			endpoint = f'/v1/brokers/{self.brokerId}/orders'
 			payload = {
 				'product': product,
 				'lotsize': lotsize,
@@ -548,7 +584,7 @@ class Broker(object):
 			return result
 
 		else:
-			endpoint = f'/v1/{self.strategyId}/orders/{self.brokerId}'
+			endpoint = f'/v1/brokers/{self.brokerId}/orders'
 			payload = {
 				'product': product,
 				'lotsize': lotsize,
@@ -714,14 +750,29 @@ class Broker(object):
 		else:
 			end = tl.utils.setTimezone(end, 'UTC')
 
-		broker = self.api.ctrl.brokers.getBroker(self.name)
 		last_date = start
 		data = None
 		while not self._is_last_candle_found(period, last_date, end, 1):
-			result = broker._download_historical_data(
-				product, period, start=last_date, end=end, count=count
+			endpoint = f'/v1/prices/{self.name}/{product}/{period}'
+			res = self._session.get(
+				self._url + endpoint,
+				params = {
+					'from': start.strftime('%Y-%m-%dT%H:%M:%SZ'), 'to': end.strftime('%Y-%m-%dT%H:%M:%SZ'), 'tz': 'UTC'
+				}
 			)
-			if result is not None:
+			status_code = res.status_code
+			if status_code == 200:
+				# Convert result to dataframe
+				result = res.json()
+				result = pd.DataFrame(
+					index=result['ohlc']['timestamps'],
+					columns=[
+						'ask_open', 'ask_high', 'ask_low', 'ask_close',
+						'bid_open', 'bid_high', 'bid_low', 'bid_close'
+					],
+					data=np.concatenate((result['ohlc']['asks'], result['ohlc']['bids']), axis=1)
+				)
+
 				data = pd.concat((data, result))
 				last_date = tl.utils.convertTimestampToTime(result.index.values[-1])
 			else:
@@ -972,13 +1023,13 @@ class Broker(object):
 		self.positions = [
 			tl.position.Position.fromDict(self, pos) 
 			for pos in item.get('positions') 
-			if pos['account_id'] in self.accounts
+			if pos['account_id'] == self.accountId
 		]
 
 		self.orders = [
 			tl.order.Order.fromDict(self, order) 
 			for order in item.get('orders') 
-			if order['account_id'] in self.accounts
+			if order['account_id'] == self.accountId
 		]
 
 

@@ -97,7 +97,7 @@ class Position(dict):
 	def close(self, lotsize=None):
 		if not lotsize: lotsize = self.lotsize
 
-		endpoint = f'/v1/{self._broker.strategyId}/positions/{self._broker.brokerId}'
+		endpoint = f'/v1/brokers/{self._broker.brokerId}/positions'
 		payload = {
 			"items": [{
 				"order_id": self.order_id,
@@ -125,7 +125,7 @@ class Position(dict):
 		sl_price=None, tp_price=None
 	):
 
-		endpoint = f'/v1/{self._broker.strategyId}/positions/{self._broker.brokerId}'
+		endpoint = f'/v1/brokers/{self._broker.brokerId}/positions'
 		payload = {
 			"items": [{
 				"order_id": self.order_id,

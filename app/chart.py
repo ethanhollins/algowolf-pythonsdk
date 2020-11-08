@@ -392,7 +392,7 @@ class Chart(object):
 		self.strategy.app.sio.emit(
 			'subscribe',
 			{
-				'strategy_id': self.strategy.brokerId,
+				'broker_id': self.strategy.brokerId,
 				'field': 'ontick',
 				'items': {
 					self.product: periods

@@ -13,14 +13,20 @@ MAX_GUI = 200
 
 class Strategy(object):
 
-	def __init__(self, app, module, strategy_id=None, broker_id=None, account_id=None, user_variables={}, data_path='data/'):
+	def __init__(self, 
+		app, module, strategy_id=None, broker_id=None, 
+		account_id=None, user_variables={}, data_path='data/'
+	):
 		# Retrieve broker type
 		self.app = app
 		self.module = module
 		self.strategyId = strategy_id
 		self.brokerId = broker_id
-		self.broker = Broker(app, self, strategy_id=self.strategyId, broker_id=self.brokerId, data_path=data_path)
-		self.account_id = account_id
+		self.accountId = account_id
+		self.broker = Broker(
+			app, self, strategy_id=self.strategyId, broker_id=self.brokerId, 
+			account_id=self.accountId, data_path=data_path
+		)
 
 		# GUI Queues
 		self.drawing_queue = []
@@ -44,7 +50,7 @@ class Strategy(object):
 
 
 	def getAccountCode(self):
-		return self.brokerId + '.' + self.account_id
+		return self.brokerId + '.' + self.accountId
 
 
 	def _connect_user_input(self):
@@ -117,30 +123,30 @@ class Strategy(object):
 
 	# Account functions
 	def getCurrency(self):
-		return self.getBroker().getAccountInfo([self.account_id])[self.account_id]['currency']
+		return self.getBroker().getAccountInfo([self.accountId])[self.accountId]['currency']
 
 	def getBalance(self):
-		return self.getBroker().getAccountInfo([self.account_id])[self.account_id]['balance']
+		return self.getBroker().getAccountInfo([self.accountId])[self.accountId]['balance']
 
 	def getProfitLoss(self):
-		return self.getBroker().getAccountInfo([self.account_id])[self.account_id]['pl']
+		return self.getBroker().getAccountInfo([self.accountId])[self.accountId]['pl']
 
 	def getEquity(self):
-		info = self.getBroker().getAccountInfo([self.account_id])[self.account_id]
+		info = self.getBroker().getAccountInfo([self.accountId])[self.accountId]
 		return info['balance'] + info['pl']
 
 	def getMargin(self):
-		return self.getBroker().getAccountInfo([self.account_id])[self.account_id]['margin']
+		return self.getBroker().getAccountInfo([self.accountId])[self.accountId]['margin']
 
 
 	# Order functions
 	def getAllPositions(self):
-		result = self.getBroker().getAllPositions(account_id=self.account_id)
+		result = self.getBroker().getAllPositions(account_id=self.accountId)
 		return result
 
 
 	def getAllOrders(self):
-		result = self.getBroker().getAllOrders(account_id=self.account_id)
+		result = self.getBroker().getAllOrders(account_id=self.accountId)
 		return result
 
 
@@ -153,7 +159,7 @@ class Strategy(object):
 	):
 		if self.getBroker().state != State.STOPPED:
 			return self.getBroker().buy(
-				product, lotsize, [self.account_id],
+				product, lotsize, [self.accountId],
 				order_type=order_type,
 				entry_range=entry_range, entry_price=entry_price,
 				sl_range=sl_range, tp_range=tp_range,
@@ -173,7 +179,7 @@ class Strategy(object):
 	):
 		if self.getBroker().state != State.STOPPED:
 			return self.getBroker().sell(
-				product, lotsize, [self.account_id],
+				product, lotsize, [self.accountId],
 				order_type=order_type,
 				entry_range=entry_range, entry_price=entry_price,
 				sl_range=sl_range, tp_range=tp_range,
@@ -492,9 +498,9 @@ class Strategy(object):
 	def setTick(self, tick):
 		self.lastTick = tick
 
-		# Save GUI
-		if self.getBroker().state == State.LIVE:
-			self.saveGui()
+		# # Save GUI
+		# if self.getBroker().state == State.LIVE:
+		# 	self.saveGui()
 
 	'''
 	Getters

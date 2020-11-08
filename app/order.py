@@ -71,7 +71,7 @@ class Order(dict):
 
 	def cancel(self):
 
-		endpoint = f'/v1/{self._broker.strategyId}/orders/{self._broker.brokerId}'
+		endpoint = f'/v1/brokers/{self._broker.brokerId}/orders'
 		payload = {
 			"items": [{
 				"order_id": self.order_id
@@ -103,7 +103,7 @@ class Order(dict):
 		sl_range=None, tp_range=None,
 		sl_price=None, tp_price=None
 	):
-		endpoint = f'/v1/{self._broker.strategyId}/orders/{self._broker.brokerId}'
+		endpoint = f'/v1/brokers/{self._broker.brokerId}/orders'
 		payload = {
 			"items": [{
 				"order_id": self.order_id,

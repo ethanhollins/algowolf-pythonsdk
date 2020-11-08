@@ -27,8 +27,8 @@ def app():
 def run(package, strategy_id, account_code, key, input_variables, config):
 	input_variables = json.loads(input_variables)
 	config = json.loads(config)
-	app = App(config, package, strategy_id, account_code, key)
 
+	app = App(config, package, strategy_id, account_code, key)
 	app.run(input_variables)
 
 
@@ -58,9 +58,10 @@ def run(package, strategy_id, account_code, key, input_variables, config):
 def backtest(package, strategy_id, account_code, key, _from, to, input_variables, config):
 	input_variables = json.loads(input_variables)
 	config = json.loads(config)
-	app = App(config, package, strategy_id, account_code, key)
 
+	app = App(config, package, strategy_id, account_code, key)
 	app.backtest(_from, to, 'run', input_variables)
 
-
-
+app.add_command(run)
+app.add_command(backtest)
+app()
