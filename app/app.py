@@ -18,7 +18,9 @@ class App(object):
 		self.config = config
 		self.scriptId, self.package = package.split('.')
 		self.strategyId = strategy_id
+
 		self.brokerId, self.accountId = self._convert_account_code(account_code)
+
 		self.key = key
 
 		self.sio = self._setup_sio()
@@ -101,21 +103,28 @@ class App(object):
 		properties = {}
 		e = None
 		try:
-			self.startStrategy(account_id, {})
+			self.startStrategy({})
 
 		except Exception as err:
 			print(traceback.format_exc())
 			e = err
 		finally:
-			if account_id in self.strategies:
-				strategy = self.strategies[account_id].get('strategy')
-				properties['input_variables'] = strategy.input_variables
-				del self.strategies[account_id]
-
 			if e is not None:
 				raise TradelibException(str(e))
 
-			return properties
+			properties['input_variables'] = self.strategy.input_variables
+			endpoint = f'/v1/scripts/{self.scriptId}'
+			payload = {
+				'properties': properties
+			}
+			self.strategy.getBroker()._session.post(
+				self.strategy.getBroker()._url + endpoint,
+				data=json.dumps(payload)
+			)
+
+			self.sio.disconnect()
+
+		return properties
 
 
 	def getPackageModule(self, package):
@@ -134,7 +143,6 @@ class App(object):
 			self.module = self.getPackageModule(f'{self.package}')
 
 			self.strategy = Strategy(self, self.module, strategy_id=self.strategyId, broker_id=self.brokerId, account_id=self.accountId, user_variables=input_variables)
-
 
 			# Set global variables
 			self.module.print = self.strategy.log

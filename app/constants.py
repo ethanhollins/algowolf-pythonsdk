@@ -46,4 +46,6 @@ DECIMAL = 'decimal'
 PERCENTAGE = 'percentage'
 TEXT = 'text'
 
+GLOBAL = 'global'
+LOCAL = 'local'
 

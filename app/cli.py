@@ -62,6 +62,29 @@ def backtest(package, strategy_id, account_code, key, _from, to, input_variables
 	app = App(config, package, strategy_id, account_code, key)
 	app.backtest(_from, to, 'run', input_variables)
 
+
+@click.command('compile', short_help='Compile strategy script.')
+@click.argument('package')
+@click.option(
+	'-sid', '-strategy-id', 'strategy_id', required=True
+)
+@click.option(
+	'-acc', '-account-code', 'account_code', required=True
+)
+@click.option(
+	'-key', '--auth-key', 'key', required=True
+)
+@click.option(
+	'-c', '--config', 'config', required=True
+)
+def compile(package, strategy_id, account_code, key, config):
+	config = json.loads(config)
+
+	app = App(config, package, strategy_id, account_code, key)
+	app.compile()
+
+
 app.add_command(run)
 app.add_command(backtest)
+app.add_command(compile)
 app()

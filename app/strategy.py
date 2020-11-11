@@ -40,8 +40,6 @@ class Strategy(object):
 		self.tick_queue = []
 		self.lastTick = None
 
-		# self.sio = self._connect_user_input()
-
 	def run(self):
 		self.broker.run()
 
@@ -51,12 +49,6 @@ class Strategy(object):
 
 	def getAccountCode(self):
 		return self.brokerId + '.' + self.accountId
-
-
-	def _connect_user_input(self):
-		sio = socketio.Client()
-		sio.connect(self.app.config['STREAM_URL'], namespaces=['/user'])
-		# sio.emit('onuserupdate', )
 
 
 	def __getattribute__(self, key):
@@ -372,69 +364,73 @@ class Strategy(object):
 
 	def handleDrawingsSave(self, gui):
 		if gui is None:
-			gui = self.api.userAccount.getGui(self.strategyId)
+			gui = self.getGui()
 
 		if 'drawings' not in gui or not isinstance(gui['drawings'], dict):
 			gui['drawings'] = {}
 
-		if self.getAccountCode() not in gui['drawings']:
-			gui['drawings'][self.getAccountCode()] = {}
-
 		for i in self.drawing_queue:
 			if i['type'] == tl.CREATE_DRAWING:
-				if i['item']['layer'] not in gui['drawings'][self.getAccountCode()]:
-					gui['drawings'][self.getAccountCode()][i['item']['layer']] = []
-				gui['drawings'][self.getAccountCode()][i['item']['layer']].append(i['item'])
+				if i['item']['layer'] not in gui['drawings']:
+					gui['drawings'][i['item']['layer']] = []
+				gui['drawings'][i['item']['layer']].append(i['item'])
 
 			elif i['type'] == tl.CLEAR_DRAWING_LAYER:
-				if i['item'] in gui['drawings'][self.getAccountCode()]:
-					gui['drawings'][self.getAccountCode()][i['item']] = []
+				if i['item'] in gui['drawings']:
+					gui['drawings'][i['item']] = []
 
 			elif i['type'] == tl.CLEAR_ALL_DRAWINGS:
-				for layer in gui['drawings'][self.getAccountCode()]:
-					gui['drawings'][self.getAccountCode()][layer] = []
+				for layer in gui['drawings']:
+					gui['drawings'][layer] = []
 
-		for layer in gui['drawings'][self.getAccountCode()]:
-			gui['drawings'][self.getAccountCode()][layer] = gui['drawings'][self.getAccountCode()][layer][-MAX_GUI:]
+		for layer in gui['drawings']:
+			gui['drawings'][layer] = gui['drawings'][layer][-MAX_GUI:]
 
 		return gui
 
 	def handleLogsSave(self, gui):
 		if gui is None:
-			gui = self.api.userAccount.getGui(self.strategyId)
+			gui = self.getGui()
 
-		if 'logs' not in gui or not isinstance(gui['logs'], dict):
-			gui['logs'] = {}
+		if 'logs' not in gui or not isinstance(gui['logs'], []):
+			gui['logs'] = []
 
-		if self.getAccountCode() not in gui['logs']:
-			gui['logs'][self.getAccountCode()] = []
 
-		gui['logs'][self.getAccountCode()] += self.log_queue
-		gui['logs'][self.getAccountCode()] = gui['logs'][self.getAccountCode()][-MAX_GUI:]
+		gui['logs'] += self.log_queue
+		gui['logs'] = gui['logs'][-MAX_GUI:]
 
 		return gui
 
 	def handleInfoSave(self, gui):
 		if gui is None:
-			gui = self.api.userAccount.getGui(self.strategyId)
+			gui = self.getGui()
 
 		if 'info' not in gui or not isinstance(gui['info'], dict):
 			gui['info'] = {}
 
-		if self.getAccountCode() not in gui['info']:
-			gui['info'][self.getAccountCode()] = {}
-
 		for i in self.info_queue:
-			if i['timestamp'] not in gui['info'][self.getAccountCode()]:
-				gui['info'][self.getAccountCode()][i['timestamp']] = []
+			if i['timestamp'] not in gui['info']:
+				gui['info'][i['timestamp']] = []
 
-			gui['info'][self.getAccountCode()][i['timestamp']].append(i['item'])
+			gui['info'][i['timestamp']].append(i['item'])
 		
-		gui['info'][self.getAccountCode()] = dict(sorted(
-			gui['logs'][self.getAccountCode()].items(), key=lambda x: x[0]
+		gui['info'] = dict(sorted(
+			gui['logs'].items(), key=lambda x: x[0]
 		)[-MAX_GUI:])
 		
 		return gui
+
+
+	def getGui(self):
+		endpoint = f'/v1/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
+		res = self.getBroker()._session.get(
+			self.getBroker()._url + endpoint
+		)
+
+		if res.status_code == 200:
+			return res.json()
+		else:
+			return {}
 
 
 	def saveGui(self):
@@ -451,7 +447,12 @@ class Strategy(object):
 				gui = self.handleInfoSave(gui)
 
 			if gui is not None:
-				Thread(target=self.api.userAccount.updateGui, args=(self.strategyId, gui)).start()
+				print(f'SAVE GUI: {gui}')
+				endpoint = f'/v1/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
+				self.getBroker()._session.post(
+					self.getBroker()._url + endpoint,
+					data=json.dumps(gui)
+				)
 				self.resetGuiQueues()
 
 
@@ -465,7 +466,7 @@ class Strategy(object):
 			module.onUserInput(item)
 
 
-	def setInputVariable(self, name, input_type, default=None, properties={}):
+	def setInputVariable(self, name, input_type, scope=tl.GLOBAL, default=None, properties={}):
 		if input_type == int:
 			input_type = tl.INTEGER
 		elif input_type == float:
@@ -478,6 +479,7 @@ class Strategy(object):
 		self.input_variables[name] = {
 			'default': default,
 			'type': input_type,
+			'scope': scope,
 			'value': default,
 			'index': len(self.input_variables),
 			'properties': properties
@@ -499,8 +501,8 @@ class Strategy(object):
 		self.lastTick = tick
 
 		# # Save GUI
-		# if self.getBroker().state == State.LIVE:
-		# 	self.saveGui()
+		if self.getBroker().state == State.LIVE:
+			self.saveGui()
 
 	'''
 	Getters
