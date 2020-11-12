@@ -392,7 +392,7 @@ class Strategy(object):
 		if gui is None:
 			gui = self.getGui()
 
-		if 'logs' not in gui or not isinstance(gui['logs'], []):
+		if 'logs' not in gui or not isinstance(gui['logs'], list):
 			gui['logs'] = []
 
 
@@ -422,7 +422,7 @@ class Strategy(object):
 
 
 	def getGui(self):
-		endpoint = f'/v1/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
+		endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
 		res = self.getBroker()._session.get(
 			self.getBroker()._url + endpoint
 		)
@@ -447,13 +447,14 @@ class Strategy(object):
 				gui = self.handleInfoSave(gui)
 
 			if gui is not None:
-				print(f'SAVE GUI: {gui}')
-				endpoint = f'/v1/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
-				self.getBroker()._session.post(
+				endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
+				res = self.getBroker()._session.put(
 					self.getBroker()._url + endpoint,
 					data=json.dumps(gui)
 				)
-				self.resetGuiQueues()
+
+				if res.status_code == 200:
+					self.resetGuiQueues()
 
 
 	def on_user_input(self, item):
