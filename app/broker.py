@@ -106,18 +106,22 @@ class Broker(object):
 		strategy_info = self._initialize_strategy()
 		print(strategy_info['brokers'][self.brokerId]['broker'])
 		self.setName(strategy_info['brokers'][self.brokerId]['broker'])
+		print(1)
 
 		self._app.sio.on('connect', handler=self._stream_connect, namespace='/user')
 		self._app.sio.on('disconnect', handler=self._stream_disconnect, namespace='/user')
 		self._app.sio.on('ontick', handler=self._stream_ontick, namespace='/user')
 		self._app.sio.on('ontrade', handler=self._stream_ontrade, namespace='/user')
+		print(2)
 
 		# Subscribe all charts
 		self._subscribe_charts(self.charts)
+		print(3)
 
 		# If `_start_from` set, run `_backtest_and_run`
 		if self._start_from is not None:
 			self._backtest_and_run(self._start_from, quick_download=True)
+			print(4)
 		else:
 			end = datetime.datetime.utcnow()
 			for chart in self.charts:
@@ -397,7 +401,7 @@ class Broker(object):
 		return int(self.getChart(product).getTimestamp(period))
 
 	def updateAllPositions(self):
-		endpoint = f'/v1/brokers/{self.brokerId}/positions'
+		endpoint = f'/v1/strategy/{self.strategyId}/brokers/{self.brokerId}/positions'
 		res = self._session.get(
 			self._url + endpoint
 		)
@@ -430,7 +434,7 @@ class Broker(object):
 		return None
 
 	def updateAllOrders(self):
-		endpoint = f'/v1/brokers/{self.brokerId}/orders'
+		endpoint = f'/v1/strategy/{self.strategyId}/brokers/{self.brokerId}/orders'
 		res = self._session.get(
 			self._url + endpoint
 		)
@@ -470,9 +474,18 @@ class Broker(object):
 		info = self.api.getAccountInfo(accounts, override=True)
 
 
-	def getAccountInfo(self, accounts=[]):
+	def getAccountInfo(self, account_id):
 		if self.isLive():
-			return self.api.getAccountInfo(accounts, override=True)
+			endpoint = f'/v1/strategy/{self.strategyId}/brokers/{self.brokerId}/accounts/{self.accountId}'
+			res = self._session.get(
+				self._url + endpoint
+			)
+
+			status_code = res.status_code
+			if status_code == 200:
+				return res.json()
+			else:
+				return None
 		else:
 			result = {}
 			for account in accounts:
@@ -524,7 +537,7 @@ class Broker(object):
 
 
 		else:
-			endpoint = f'/v1/brokers/{self.brokerId}/orders'
+			endpoint = f'/v1/strategy/{self.strategyId}/brokers/{self.brokerId}/orders'
 			payload = {
 				'product': product,
 				'lotsize': lotsize,
@@ -584,7 +597,7 @@ class Broker(object):
 			return result
 
 		else:
-			endpoint = f'/v1/brokers/{self.brokerId}/orders'
+			endpoint = f'/v1/strategy/{self.strategyId}/brokers/{self.brokerId}/orders'
 			payload = {
 				'product': product,
 				'lotsize': lotsize,
