@@ -19,11 +19,15 @@ class App(object):
 		self.scriptId, self.package = package.split('.')
 		self.strategyId = strategy_id
 
-		self.brokerId, self.accountId = self._convert_account_code(account_code)
+		if account_code is not None:
+			self.brokerId, self.accountId = self._convert_account_code(account_code)
+		else:
+			self.brokerId = 'BACKTESTER'
+			self.accountId = 'ACCOUNT_1'
 
 		self.key = key
 
-		self.sio = self._setup_sio()
+		self.sio = socketio.Client()
 
 		# Containers
 		self.strategy = None
@@ -38,31 +42,35 @@ class App(object):
 		return account_code.split('.')
 
 
-	def _setup_sio(self):
+	def connectSio(self):
 		headers = {
 			'Authorization': 'Bearer '+self.key
 		}
 
-		sio = socketio.Client()
-		sio.connect(
+		self.sio.connect(
 			self.config.get('STREAM_URL'), 
 			namespaces=['/admin', '/user'],
 			headers=headers
 		)
-		return sio
 
 
 	# TODO: Add accounts parameter
 	def run(self, input_variables):
-		# Start strategy for each account
-		self.startStrategy(input_variables)
-		if self.strategy.getBroker().state.value <= 2:
-			# Run strategy
-			self.strategy.run()
+		try:
+			# Start strategy for each account
+			self.startStrategy(input_variables)
+			if self.strategy.getBroker().state.value <= 2:
+				# Run strategy
+				self.strategy.run()
 
-		# Call strategy onStart
-		if 'onStart' in dir(self.module) and callable(self.module.onStart):
-			self.module.onStart()
+			# Call strategy onStart
+			if 'onStart' in dir(self.module) and callable(self.module.onStart):
+				self.module.onStart()
+
+		except Exception as e:
+			print(traceback.format_exc(), flush=True)
+			self.sio.disconnect()
+			raise e
 
 
 	def stop(self):
@@ -72,26 +80,24 @@ class App(object):
 			self.module = None
 
 
-	def backtest(self, _from, to, mode, input_variables):
-		account_id = 'ACCOUNT_1'
-
+	def backtest(self, broker, _from, to, mode, input_variables):
 		e = None
 		try:
-			if isinstance(_from, str):
-				_from = datetime.strptime(_from, '%Y-%m-%dT%H:%M:%SZ')
-			if isinstance(to, str):
-				to = datetime.strptime(to, '%Y-%m-%dT%H:%M:%SZ')
-			self.startStrategy(account_id, input_variables)
-			self.strategies[account_id].get('strategy').getBroker().setName(self.api.name)
+			_from = tl.utils.convertTimestampToTime(float(_from))
+			to = tl.utils.convertTimestampToTime(float(to))
+			# if isinstance(_from, str):
+			# 	_from = datetime.strptime(_from, '%Y-%m-%dT%H:%M:%SZ')
+			# if isinstance(to, str):
+			# 	to = datetime.strptime(to, '%Y-%m-%dT%H:%M:%SZ')
+			self.startStrategy(input_variables)
+			self.strategy.getBroker().setName(broker)
 
-			backtest_id = self.strategies[account_id].get('strategy').backtest(_from, to, mode)
+			backtest_id = self.strategy.backtest(_from, to, mode)
 		except Exception as err:
-			print(traceback.format_exc())
+			print(traceback.format_exc(), flush=True)
 			e = err
 		finally:
-			if account_id in self.strategies:
-				del self.strategies[account_id]
-
+			self.sio.disconnect()
 			if e is not None:
 				raise TradelibException(str(e))
 
@@ -106,9 +112,11 @@ class App(object):
 			self.startStrategy({})
 
 		except Exception as err:
-			print(traceback.format_exc())
+			print(traceback.format_exc(), flush=True)
 			e = err
 		finally:
+			self.sio.disconnect()
+
 			if e is not None:
 				raise TradelibException(str(e))
 
@@ -121,8 +129,6 @@ class App(object):
 				self.strategy.getBroker()._url + endpoint,
 				data=json.dumps(payload)
 			)
-
-			self.sio.disconnect()
 
 		return properties
 

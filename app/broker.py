@@ -11,10 +11,12 @@ import threading
 import sys
 import shortuuid
 import traceback
+import math
 from copy import copy
 from enum import Enum
 from .. import app as tl
 from .app import App
+from io import BytesIO
 
 '''
 Broker Names
@@ -106,22 +108,20 @@ class Broker(object):
 		strategy_info = self._initialize_strategy()
 		print(strategy_info['brokers'][self.brokerId]['broker'])
 		self.setName(strategy_info['brokers'][self.brokerId]['broker'])
-		print(1)
 
 		self._app.sio.on('connect', handler=self._stream_connect, namespace='/user')
 		self._app.sio.on('disconnect', handler=self._stream_disconnect, namespace='/user')
 		self._app.sio.on('ontick', handler=self._stream_ontick, namespace='/user')
 		self._app.sio.on('ontrade', handler=self._stream_ontrade, namespace='/user')
-		print(2)
+
+		self._app.connectSio()
 
 		# Subscribe all charts
 		self._subscribe_charts(self.charts)
-		print(3)
 
 		# If `_start_from` set, run `_backtest_and_run`
 		if self._start_from is not None:
 			self._backtest_and_run(self._start_from, quick_download=True)
-			print(4)
 		else:
 			end = datetime.datetime.utcnow()
 			for chart in self.charts:
@@ -134,11 +134,12 @@ class Broker(object):
 
 		self._prepare_for_live()
 
+		print('LIVE')
 		self.state = State.LIVE
 
 
 	def stop(self):
-		print('STOPPED')
+		print('STOPPED', flush=True)
 		self.state = State.STOPPED
 
 		# for product in self._chart_subs:
@@ -211,15 +212,56 @@ class Broker(object):
 		}
 
 
+	def upload(self, endpoint, payload):
+		# Upload Backtest
+		file_name = self.generateReference()
+		file = BytesIO(payload)
+
+		blocksize = 1024 * 1024
+		chunkindex = 0
+		chunkbyteoffest = 0
+		totalfilesize = file.getbuffer().nbytes
+		totalchunkcount = math.ceil(totalfilesize / blocksize)
+
+		while chunkindex < totalchunkcount:
+			headers = {
+				'Filename': f'{file_name}.json',
+				'Chunkindex': str(chunkindex),
+				'Chunkbyteoffset': str(chunkbyteoffest),
+				'Totalfilesize': str(totalfilesize),
+				'Totalchunkcount': str(totalchunkcount)
+			}
+			data = file.read(blocksize)
+
+			res = self._session.post(
+				self._url + endpoint,
+				data=data, headers=headers
+			)
+
+			if res.status_code != 200:
+				print(f'Failed backtest upload, {res.text}', flush=True)
+				return res
+
+			chunkindex += 1
+			chunkbyteoffest += blocksize
+
+		print('upload complete', flush=True)
+		return res
+
+
 	def backtest(self, start, end, mode=BacktestMode.RUN, upload=False, download=True, quick_download=False):
 		self.state = State.BACKTEST
 
 		self._perform_backtest(start, end, mode=mode, download=download, quick_download=quick_download)
 
-		backtest_id = self.api.userAccount.uploadBacktest(self.strategyId, self._generate_backtest(start, end))
+		# Upload Backtest
+		endpoint = f'/v1/strategy/{self.strategyId}/backtest'
+		payload = json.dumps(self._generate_backtest(start, end)).encode()
+		res = self.upload(endpoint, payload)
 
-		self.state = State.LIVE
-
+		# Retrieve Backtest ID
+		backtest_id = res.json().get('backtest_id')
+		print(backtest_id, flush=True)
 		return backtest_id
 
 
@@ -254,7 +296,7 @@ class Broker(object):
 		# self.updateAllPositions()
 		# self.updateAllOrders()
 
-		self.state = State.LIVE
+		# self.state = State.LIVE
 
 
 	def isBacktest(self):
@@ -308,7 +350,7 @@ class Broker(object):
 		if res.status_code == 200:
 			return res.json()
 		else:
-			print(res.json())
+			print(res.json(), flush=True)
 
 
 	def _subscribe_charts(self, charts):
@@ -415,9 +457,9 @@ class Broker(object):
 						[pos for pos in self.positions if pos.isBacktest()] +
 						[tl.position.Position.fromDict(self, pos) for pos in data[account_id]]
 					)
-			print(self.positions)
+			print(self.positions, flush=True)
 		else:
-			print(res.json())
+			print(res.json(), flush=True)
 			pass
 
 
@@ -448,7 +490,7 @@ class Broker(object):
 						[order for order in self.orders if order.isBacktest()] +
 						[tl.order.Order.fromDict(self, order) for order in data[account_id]]
 					)
-			print(self.orders)
+			print(self.orders, flush=True)
 		else:
 			pass
 
@@ -487,15 +529,15 @@ class Broker(object):
 			else:
 				return None
 		else:
-			result = {}
-			for account in accounts:
-				result[account] = {
+			result = {
+				account_id: {
 					'currency': 'AUD',
 					'balance': 10000,
 					'pl': 0,
 					'margin': 0,
 					'available': 10000
 				}
+			}
 			return result
 
 	'''
@@ -770,7 +812,7 @@ class Broker(object):
 			res = self._session.get(
 				self._url + endpoint,
 				params = {
-					'from': start.strftime('%Y-%m-%dT%H:%M:%SZ'), 'to': end.strftime('%Y-%m-%dT%H:%M:%SZ'), 'tz': 'UTC'
+					'from': last_date.strftime('%Y-%m-%dT%H:%M:%SZ'), 'to': end.strftime('%Y-%m-%dT%H:%M:%SZ'), 'tz': 'UTC'
 				}
 			)
 			status_code = res.status_code
@@ -841,8 +883,8 @@ class Broker(object):
 	'''
 
 	def _stream_connect(self):
-		print('Connected.')
-		self.sio.emit(
+		print('Connected.', flush=True)
+		self._app.sio.emit(
 			'subscribe',
 			{
 				'broker_id': self.brokerId,
@@ -852,14 +894,14 @@ class Broker(object):
 		)
 
 	def _stream_disconnect(self):
-		print('Disconnected, retrying connection...')
+		print('Disconnected, retrying connection...', flush=True)
 
 
 	def _stream_ontick(self, item):
 		try:
 			self.getChart(item['product'])._on_tick(item)
 		except Exception as e:
-			print(traceback.format_exc())
+			print(traceback.format_exc(), flush=True)
 			self.stop()
 
 
@@ -882,6 +924,7 @@ class Broker(object):
 
 	def _stream_ontrade(self, items):
 		try:
+			print(items, flush=True)
 			for ref_id, item in items.items():
 				result = self.onTradeHandler(ref_id, item)
 
@@ -896,7 +939,7 @@ class Broker(object):
 							})
 						)
 		except Exception as e:
-			print(traceback.format_exc())
+			print(traceback.format_exc(), flush=True)
 			self.stop()
 
 

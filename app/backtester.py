@@ -3,6 +3,7 @@ import math
 import numpy as np
 import pandas as pd
 from copy import copy
+from datetime import datetime
 
 
 class Backtester(object):
@@ -515,20 +516,16 @@ class Backtester(object):
 			chart = charts[i]
 
 			# Add list of periods and respective dataframes
-			periods.append([period for period in chart._subscriptions])
-			dataframes.append(
-				[chart._data[period].copy() for period in chart._subscriptions]
-			)
 
 			# Sort periods by period offset
-			periods[i] = sorted(
-				periods[i], 
-				key=lambda x: tl.period.getPeriodOffsetSeconds(x)
-			)
+			periods.append(sorted(chart._subscriptions, key=lambda x: tl.period.getPeriodOffsetSeconds(x)))
+
 			# Sort dataframes by period offset
-			dataframes[i] = sorted(
-				dataframes[i], 
-				key=lambda x: tl.period.getPeriodOffsetSeconds(periods[i][dataframes[i].index(x)])
+			dataframes.append(
+				[
+					chart._data[period].copy() 
+					for period in sorted(chart._subscriptions, key=lambda x: tl.period.getPeriodOffsetSeconds(x))
+				]
 			)
 
 			# Add period offset to dataframe index for correct period sorting
@@ -558,7 +555,7 @@ class Backtester(object):
 		return all_ts
 
 
-	def _process_indicies(self, dataframes, periods, all_ts, start, end):
+	def _process_indicies(self, dataframes, periods, charts, all_ts, start, end):
 		# Create container for chart indicies
 		chart_indicies = []
 		for i in range(len(dataframes)):
@@ -582,6 +579,12 @@ class Backtester(object):
 					off, off+np.count_nonzero(intersect), 
 					dtype=int
 				)
+				# Set charts initial values
+				first_idx = max(off-1, 0)
+				charts[i]._set_idx(period, first_idx)
+				charts[i].timestamps[period] = charts[i]._data[period].index.values[:first_idx+1][::-1]
+				charts[i].asks[period] = charts[i]._data[period].values[:first_idx+1,:4][::-1]
+				charts[i].bids[period] = charts[i]._data[period].values[:first_idx+1,4:][::-1]
 
 		return chart_indicies
 
@@ -640,7 +643,7 @@ class Backtester(object):
 
 	def performBacktest(self, mode, start=None, end=None):
 		# Get timestamps
-		if start and end:
+		if isinstance(start, datetime) and isinstance(end, datetime):
 			start = tl.convertTimeToTimestamp(start)
 			end = tl.convertTimeToTimestamp(end)
 
@@ -655,7 +658,7 @@ class Backtester(object):
 			return self.result
 
 		# Process indicies
-		chart_indicies = self._process_indicies(dataframes, periods, all_ts, start, end)
+		chart_indicies = self._process_indicies(dataframes, periods, charts, all_ts, start, end)
 
 		# Run event loop
 		self._event_loop(charts, periods, all_ts, chart_indicies, mode)
@@ -877,7 +880,7 @@ class OandaBacktester(Backtester):
 				)
 				sl_res = {
 					self.broker.generateReference(): {
-						'timestamp': self.broker.getTimestamp(pos.product, tl.period.ONE_MINUTE),
+						'timestamp': self.broker.getTimestamp(result.product, tl.period.ONE_MINUTE),
 						'type': tl.MODIFY,
 						'accepted': True,
 						'item': result
@@ -892,7 +895,7 @@ class OandaBacktester(Backtester):
 				)
 				tp_res = {
 					self.broker.generateReference(): {
-						'timestamp': self.broker.getTimestamp(pos.product, tl.period.ONE_MINUTE),
+						'timestamp': self.broker.getTimestamp(result.product, tl.period.ONE_MINUTE),
 						'type': tl.MODIFY,
 						'accepted': True,
 						'item': result

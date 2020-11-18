@@ -185,7 +185,6 @@ class Chart(object):
 
 	def _on_tick(self, item):
 		'''Handle on tick item'''
-
 		queue_id = self.strategy.broker.generateReference()
 		self.strategy.tick_queue.append(queue_id)
 		queue_idx = self.strategy.tick_queue.index(queue_id)
@@ -204,7 +203,7 @@ class Chart(object):
 			return
 
 		elif not item['bar_end'] and item['timestamp'] >= last_ts:
-			new_ts = item['timestamp'] + tl.period.getPeriodOffsetSeconds(item['period'])
+			new_ts = self.getNewTimestamp(item['period'], item['timestamp'], last_ts)
 			self._idx[item['period']] += 1
 			self._data[item['period']].loc[new_ts] = ohlc
 
@@ -271,6 +270,11 @@ class Chart(object):
 
 		# Handle Indicators
 		self._handle_indicators(period)
+
+
+	def getNewTimestamp(self, period, c_ts, last_ts):
+		period_off = tl.period.getPeriodOffsetSeconds(period)
+		return c_ts - ((c_ts + period_off) % last_ts % period_off)
 
 
 	def getNextTimestamp(self, period, ts, now=None):

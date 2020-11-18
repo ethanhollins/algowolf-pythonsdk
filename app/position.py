@@ -97,7 +97,7 @@ class Position(dict):
 	def close(self, lotsize=None):
 		if not lotsize: lotsize = self.lotsize
 
-		endpoint = f'/v1/brokers/{self._broker.brokerId}/positions'
+		endpoint = f'/v1/strategy/{self._broker.strategyId}/brokers/{self._broker.brokerId}/positions'
 		payload = {
 			"items": [{
 				"order_id": self.order_id,
@@ -109,13 +109,19 @@ class Position(dict):
 			self._broker._url + endpoint,
 			data=json.dumps(payload)
 		)
-		res = res.json()
-	
-		result = self
-		for ref_id, item in res.items():
-			if item.get('accepted'):
-				func = self._broker._get_trade_handler(item.get('type'))
-				result = self._broker._wait(ref_id, func, (ref_id, item))
+
+		status_code = res.status_code
+		if status_code == 200:
+			res = res.json()
+		
+			result = self
+			for ref_id, item in res.items():
+				if item.get('accepted'):
+					func = self._broker._get_trade_handler(item.get('type'))
+					result = self._broker._wait(ref_id, func, (ref_id, item))
+					
+		else:
+			print(f'{res.status_code}: {res.text}', flush=True)
 
 		return result
 
@@ -125,7 +131,7 @@ class Position(dict):
 		sl_price=None, tp_price=None
 	):
 
-		endpoint = f'/v1/brokers/{self._broker.brokerId}/positions'
+		endpoint = f'/v1/strategy/{self._broker.strategyId}/brokers/{self._broker.brokerId}/positions'
 		payload = {
 			"items": [{
 				"order_id": self.order_id,
@@ -140,12 +146,18 @@ class Position(dict):
 			self._broker._url + endpoint,
 			data=json.dumps(payload)
 		)
-		res = res.json()
 
-		for ref_id, item in res.items():
-			if item.get('accepted'):
-				func = self._broker._get_trade_handler(item.get('type'))
-				wait_result = self._broker._wait(ref_id, func, (ref_id, item))
+		status_code = res.status_code
+		if status_code == 200:
+			res = res.json()
+
+			for ref_id, item in res.items():
+				if item.get('accepted'):
+					func = self._broker._get_trade_handler(item.get('type'))
+					wait_result = self._broker._wait(ref_id, func, (ref_id, item))
+
+		else:
+			print(f'{res.status_code}: {res.text}', flush=True)
 
 		return self
 	

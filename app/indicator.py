@@ -95,6 +95,90 @@ class Indicator(object):
 Overlays
 '''
 
+# Average True Range
+class ATR(Indicator):
+
+	def __init__(self, period):
+		super().__init__('atr', [period], None)
+
+	def _perform_calculation(self, price_type, ohlc, idx):
+		# Properties:
+		period = self.properties[0]
+
+		# Get relevant OHLC
+		ohlc = ohlc[max((idx+1)-period, 0):idx+1]
+
+		# Check min period met
+		if ohlc.shape[0] < period:
+			return [np.nan]
+
+		# Perform calculation
+		prev_close = ohlc[-2, 3]
+		high = ohlc[-1, 1]
+		low = ohlc[-1, 2]
+
+		if idx > period:
+			if price_type == 'ask':
+				prev_atr = self._asks[idx-1, 0]
+			else:
+				prev_atr = self._bids[idx-1, 0]
+
+			if prev_close > high:
+				tr = prev_close - low
+			elif prev_close < low:
+				tr = high - prev_close
+			else:
+				tr = high - low
+
+			atr = (prev_atr * (period-1) + tr) / period
+
+		else:
+			tr_sum = 0
+			for i in range(ohlc.shape[0]):
+				if i == 0:
+					tr_sum += (ohlc[i,1] - ohlc[i,2])
+				else:
+					if prev_close > high:
+						tr_sum += prev_close - low
+					elif prev_close < low:
+						tr_sum += high - prev_close
+					else:
+						tr_sum += high - low
+
+			atr = tr_sum / period
+
+
+		return [atr]
+
+
+# Bollinger Bands
+class BOLL(Indicator):
+
+	def __init__(self, period, std_dev):
+		super().__init__('boll', [period, std_dev], None)
+
+	def _perform_calculation(self, price_type, ohlc, idx):
+		# Properties:
+		period = self.properties[0]
+		std_dev = self.properties[1]
+
+		# Get relevant OHLC
+		ohlc = ohlc[max((idx+1)-period, 0):idx+1]
+		# Check min period met
+		if ohlc.shape[0] < period:
+			return [np.nan]*2
+
+		# Perform calculation
+		mean = np.sum(ohlc[:,3]) / ohlc.shape[0]
+		d_sum = np.sum((ohlc - mean) ** 2)
+		sd = np.sqrt(d_sum/period)
+
+		return [
+			mean + sd * std_dev,
+			mean + sd * std_dev
+		]
+
+
 # Donchian Channel
 class DONCH(Indicator):
 
@@ -166,6 +250,45 @@ class EMA(Indicator):
 		# 		self.storage[1]	= ema
 
 		return [ema]
+
+
+# Moving Average Envelope
+class MAE(Indicator):
+
+	def __init__(self, period, percent, type='ema'):
+		super().__init__('mae', [period, percent], None)
+
+	def _perform_calculation(self, price_type, ohlc, idx):
+		# Properties:
+		period = self.properties[0]
+		percent = self.properties[1]
+
+		# Get relevant OHLC
+		ohlc = ohlc[max((idx+1)-period, 0):idx+1]
+		# Check min period met
+		if ohlc.shape[0] < period:
+			return [np.nan]*3
+
+		# Perform calculation
+
+		if idx > period:
+			if price_type == 'ask':
+				prev_ema = self._asks[idx-1, 0]
+			else:
+				prev_ema = self._bids[idx-1, 0]
+
+			multi = 2 / (period + 1)
+			ema = (ohlc[-1, 3] - prev_ema) * multi + prev_ema
+
+		else:
+			ma = 0
+			for i in range(ohlc.shape[0]):
+				ma += ohlc[i,3]
+
+			ema = ma / period
+
+		off = (ema * percent)
+		return [ema, ema + off, ema - off]
 
 
 # Simple Moving Average

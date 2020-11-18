@@ -8,7 +8,7 @@ from .broker import Broker, BacktestMode, State
 from threading import Thread
 
 SAVE_INTERVAL = 60 # Seconds
-MAX_GUI = 200
+MAX_GUI = 1000
 
 
 class Strategy(object):
@@ -293,7 +293,7 @@ class Strategy(object):
 
 
 	def log(self, *objects, sep=' ', end='\n', file=None, flush=None):
-		# print(*objects, sep=sep, end=end, file=file, flush=flush)
+		# print(*objects, sep=sep, end=end, file=file, flush=True)
 		msg = sep.join(map(str, objects)) + end
 		if self.lastTick is not None:
 			timestamp = self.lastTick.timestamp
@@ -463,10 +463,8 @@ class Strategy(object):
 
 			if gui is not None:
 				endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
-				res = self.getBroker()._session.put(
-					self.getBroker()._url + endpoint,
-					data=json.dumps(gui)
-				)
+				payload = json.dumps(gui).encode()
+				res = self.getBroker().upload(endpoint, payload)
 
 				if res.status_code == 200:
 					self.resetGuiQueues()
