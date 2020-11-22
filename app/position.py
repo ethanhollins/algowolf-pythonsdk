@@ -64,30 +64,32 @@ class Position(dict):
 			order['lotsize']
 		)
 		# Dictionary Variables
-		for k, v in pos.items():
+		for k, v in order.items():
 			if k != 'order_type':
 				res.__setattr__(k, v)
 
 		return res
 
+
 	def update(self, pos):
 		for k, v in pos.items():
 			self.__setattr__(k, v)
 
-	def __getattr__(self, key):
-		if key != '_broker':
+
+	def __getattribute__(self, key):
+		try:
+			return super().__getattribute__(key)
+		except AttributeError as e:
 			try:
 				return self[key]
-			except Exception:
+			except KeyError:
 				pass
-				
-		super().__getattr__(key)
+			raise e
+
 
 	def __setattr__(self, key, value):
-		if key != '_broker':
-			self[key] = value
-		else:
-			raise BrokerException('`_broker` is a protected variable.')
+		self[key] = value
+
 
 	def __str__(self):
 		return json.dumps(self, indent=2)

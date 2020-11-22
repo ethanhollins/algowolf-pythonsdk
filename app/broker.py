@@ -206,6 +206,7 @@ class Broker(object):
 		return {
 			'transactions': self.backtester.result,
 			'properties': {
+				'broker': self.name,
 				'start': tl.convertTimeToTimestamp(start),
 				'end': tl.convertTimeToTimestamp(end)
 			}
@@ -439,7 +440,9 @@ class Broker(object):
 		else:
 			raise tl.error.BrokerException(f'Chart {product} doesn\'t exist.')
 
-	def getTimestamp(self, product, period):
+	def getTimestamp(self, product, period=None):
+		if period is None:
+			period = self.getChart(product).getLowestPeriod()
 		return int(self.getChart(product).getTimestamp(period))
 
 	def updateAllPositions(self):

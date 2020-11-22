@@ -99,7 +99,7 @@ class App(object):
 		finally:
 			self.sio.disconnect()
 			if e is not None:
-				raise TradelibException(str(e))
+				raise e
 
 		return backtest_id
 
@@ -118,7 +118,7 @@ class App(object):
 			self.sio.disconnect()
 
 			if e is not None:
-				raise TradelibException(str(e))
+				raise e
 
 			properties['input_variables'] = self.strategy.input_variables
 			endpoint = f'/v1/scripts/{self.scriptId}'
@@ -200,5 +200,5 @@ Imports
 
 
 from .strategy import Strategy
-from .error import BrokerlibException, TradelibException
+from .error import BrokerlibException
 from .. import app as tl

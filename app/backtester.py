@@ -36,14 +36,14 @@ class Backtester(object):
 		if order.get('order_type') == tl.STOP_ORDER or order.get('order_type') == tl.LIMIT_ORDER:
 			if order.entry_price == None:
 				raise tl.error.OrderException('Order must contain entry price.')
-			elif order_type == tl.LIMIT_ORDER:
+			elif order.order_type == tl.LIMIT_ORDER:
 				if direction == tl.LONG:
 					if order.entry_price > price - tl.utils.convertToPrice(min_dist):
 						raise tl.error.OrderException('Long limit order entry must be lesser than current price.')
 				else:
 					if order.entry_price < price + tl.utils.convertToPrice(min_dist):
 						raise tl.error.OrderException('Short limit order entry must be greater than current price.')
-			elif order_type == tl.STOP_ORDER:
+			elif order.order_type == tl.STOP_ORDER:
 				if order.direction == tl.LONG:
 					if order.entry_price < price + tl.utils.convertToPrice(min_dist):
 						raise tl.error.OrderException('Long stop order entry must be greater than current price.')
@@ -101,7 +101,7 @@ class Backtester(object):
 		else:
 			entry = np.around(price, 5)
 
-		open_time = int(self.broker.getTimestamp(product, tl.period.ONE_MINUTE))
+		open_time = int(self.broker.getTimestamp(product))
 
 		order_id = self.broker.generateReference()
 		order = tl.BacktestPosition(self.broker,
@@ -111,7 +111,7 @@ class Backtester(object):
 		)
 
 		# Validate order
-		self._order_validation(order)
+		# self._order_validation(order)
 
 		self.broker.positions.append(order)
 
@@ -158,7 +158,8 @@ class Backtester(object):
 			else:
 				tp = np.around(entry - tl.convertToPrice(tp_range), 5)
 
-		open_time = int(self.broker.getTimestamp(product, tl.period.ONE_MINUTE))
+
+		open_time = int(self.broker.getTimestamp(product))
 		
 
 		order_id = self.broker.generateReference()
@@ -170,7 +171,7 @@ class Backtester(object):
 		)
 
 		# Validate order
-		self._order_validation(order)
+		# self._order_validation(order)
 
 		self.broker.orders.append(order)
 
@@ -203,7 +204,7 @@ class Backtester(object):
 				pos.close_price = self.broker.getBid(pos.product)
 			else:
 				pos.close_price = self.broker.getAsk(pos.product)
-			pos.close_time = self.broker.getTimestamp(pos.product, tl.period.ONE_MINUTE)
+			pos.close_time = self.broker.getTimestamp(pos.product)
 
 			result = pos
 
@@ -221,7 +222,7 @@ class Backtester(object):
 				cpy.close_price = self.broker.getBid(pos.product)
 			else:
 				cpy.close_price = self.broker.getAsk(pos.product)
-			cpy.close_time =  self.broker.getTimestamp(pos.product, tl.period.ONE_MINUTE)
+			cpy.close_time =  self.broker.getTimestamp(pos.product)
 			
 			result = cpy
 
@@ -263,7 +264,7 @@ class Backtester(object):
 
 
 	def deleteOrder(self, order):
-		order.close_time = self.broker.getTimestamp(order.product, tl.period.ONE_MINUTE)
+		order.close_time = self.broker.getTimestamp(order.product)
 		del self.broker.orders[self.broker.orders.index(order)]
 
 		return order
@@ -359,7 +360,7 @@ class Backtester(object):
 
 		res = {
 			self.broker.generateReference(): {
-				'timestamp': self.broker.getTimestamp(pos.product, tl.period.ONE_MINUTE),
+				'timestamp': self.broker.getTimestamp(pos.product),
 				'type': pos.order_type,
 				'accepted': True,
 				'item': pos
@@ -385,10 +386,10 @@ class Backtester(object):
 
 						# Close Order
 						order.close_price = order.entry_price
-						order.close_time = chart.ts[chart.c_idx]
+						order.close_time = self.broker.getTimestamp(product)
 
 						# Delete Order
-						del self.broker.orders[self.orders.index(order)]
+						del self.broker.orders[self.broker.orders.index(order)]
 
 						# On Trade
 						self.handleTransaction(res)
@@ -400,10 +401,10 @@ class Backtester(object):
 
 						# Close Order
 						order.close_price = order.entry_price
-						order.close_time = chart.ts[chart.c_idx]
+						order.close_time = self.broker.getTimestamp(product)
 						
 						# Delete Order
-						del self.broker.orders[self.orders.index(order)]
+						del self.broker.orders[self.broker.orders.index(order)]
 
 						# On Trade
 						self.handleTransaction(res)
@@ -416,10 +417,10 @@ class Backtester(object):
 
 						# Close Order
 						order.close_price = order.entry_price
-						order.close_time = chart.ts[chart.c_idx]
+						order.close_time = self.broker.getTimestamp(product)
 
 						# Delete Order
-						del self.broker.orders[self.orders.index(order)]
+						del self.broker.orders[self.broker.orders.index(order)]
 
 						# On Trade
 						self.handleTransaction(res)
@@ -431,10 +432,10 @@ class Backtester(object):
 
 						# Close Order
 						order.close_price = order.entry_price
-						order.close_time = chart.ts[chart.c_idx]
+						order.close_time = self.broker.getTimestamp(product)
 
 						# Delete Order
-						del self.broker.orders[self.orders.index(order)]
+						del self.broker.orders[self.broker.orders.index(order)]
 
 						# On Trade
 						self.handleTransaction(res)
@@ -461,7 +462,7 @@ class Backtester(object):
 				ref_id = self.broker.generateReference()
 				res = {
 					ref_id: {
-						'timestamp': self.broker.getTimestamp(pos.product, tl.period.ONE_MINUTE),
+						'timestamp': self.broker.getTimestamp(pos.product),
 						'type': tl.STOP_LOSS,
 						'accepted': True,
 						'item': pos
@@ -496,7 +497,7 @@ class Backtester(object):
 				ref_id = self.broker.generateReference()
 				res = {
 					ref_id: {
-						'timestamp': self.broker.getTimestamp(pos.product, tl.period.ONE_MINUTE),
+						'timestamp': self.broker.getTimestamp(pos.product),
 						'type': tl.TAKE_PROFIT,
 						'accepted': True,
 						'item': pos
@@ -732,7 +733,7 @@ class IGBacktester(Backtester):
 		)
 
 		ref_id = self.broker.generateReference()
-		timestamp = self.broker.getTimestamp(result.product, tl.period.ONE_MINUTE)
+		timestamp = self.broker.getTimestamp(result.product)
 		res = {
 			ref_id: {
 				'timestamp': timestamp,
@@ -777,7 +778,7 @@ class IGBacktester(Backtester):
 		)
 
 		ref_id = self.broker.generateReference()
-		timestamp = self.broker.getTimestamp(result.product, tl.period.ONE_MINUTE)
+		timestamp = self.broker.getTimestamp(result.product)
 		res = {
 			ref_id: {
 				'timestamp': timestamp,
@@ -880,7 +881,7 @@ class OandaBacktester(Backtester):
 				)
 				sl_res = {
 					self.broker.generateReference(): {
-						'timestamp': self.broker.getTimestamp(result.product, tl.period.ONE_MINUTE),
+						'timestamp': self.broker.getTimestamp(result.product),
 						'type': tl.MODIFY,
 						'accepted': True,
 						'item': result
@@ -895,7 +896,7 @@ class OandaBacktester(Backtester):
 				)
 				tp_res = {
 					self.broker.generateReference(): {
-						'timestamp': self.broker.getTimestamp(result.product, tl.period.ONE_MINUTE),
+						'timestamp': self.broker.getTimestamp(result.product),
 						'type': tl.MODIFY,
 						'accepted': True,
 						'item': result
@@ -945,7 +946,7 @@ class OandaBacktester(Backtester):
 			)
 			sl_res = {
 				self.broker.generateReference(): {
-					'timestamp': self.broker.getTimestamp(pos.product, tl.period.ONE_MINUTE),
+					'timestamp': self.broker.getTimestamp(pos.product),
 					'type': tl.MODIFY,
 					'accepted': True,
 					'item': result
@@ -960,7 +961,7 @@ class OandaBacktester(Backtester):
 			)
 			tp_res = {
 				self.broker.generateReference(): {
-					'timestamp': self.broker.getTimestamp(pos.product, tl.period.ONE_MINUTE),
+					'timestamp': self.broker.getTimestamp(pos.product),
 					'type': tl.MODIFY,
 					'accepted': True,
 					'item': result
@@ -971,7 +972,7 @@ class OandaBacktester(Backtester):
 		self.handleTransaction(res)
 		self.createTransactionItem(
 			self.broker.generateReference(), 
-			self.broker.getTimestamp(pos.product, tl.period.ONE_MINUTE), 
+			self.broker.getTimestamp(pos.product), 
 			tl.MODIFY, prev_item, copy(result)
 		)
 
@@ -1005,7 +1006,7 @@ class OandaBacktester(Backtester):
 		new_order = tl.Order.fromDict(self.broker, order)
 		new_order.order_id = self.broker.generateReference()
 
-		order.close_time = self.broker.getTimestamp(order.product, tl.period.ONE_MINUTE)
+		order.close_time = self.broker.getTimestamp(order.product)
 		del self.broker.orders[self.broker.orders.index(order)]
 
 		res = {}
@@ -1025,7 +1026,7 @@ class OandaBacktester(Backtester):
 		)
 
 		ref_id = self.broker.generateReference()
-		timestamp = self.broker.getTimestamp(order.product, tl.period.ONE_MINUTE)
+		timestamp = self.broker.getTimestamp(order.product)
 		modify_res = {
 			ref_id: {
 				'timestamp': timestamp,
@@ -1071,18 +1072,18 @@ class OandaBacktester(Backtester):
 		else:
 			order_type = tl.MARKET_ENTRY
 
-		remaining, result = self._net_off(account_id, order.direction, order.lotsize)
+		remaining, result = self._net_off(order.account_id, order.direction, order.lotsize)
 		if remaining > 0:
 			pos = tl.Position.fromOrder(self.broker, order)
 			pos.order_id = self.broker.generateReference()
 			pos.order_type = order_type
 			pos.lotsize = remaining
-			self.positions.append(pos)
+			self.broker.positions.append(pos)
 			result.append(pos)
 
 			res = {
 				self.broker.generateReference(): {
-					'timestamp': self.broker.getTimestamp(order.product, tl.period.ONE_MINUTE),
+					'timestamp': self.broker.getTimestamp(order.product),
 					'type': pos.order_type,
 					'accepted': True,
 					'item': pos

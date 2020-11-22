@@ -28,8 +28,8 @@ class Indicator(object):
 
 	def _set_idx(self, idx):
 		self.idx = idx
-		self.asks = self._asks[:self.idx+1][::-1]
-		self.bids = self._bids[:self.idx+1][::-1]
+		self.asks = np.around(self._asks[:self.idx+1][::-1], decimals=5)
+		self.bids = np.around(self._bids[:self.idx+1][::-1], decimals=5)
 
 
 	def limit(self):
@@ -37,8 +37,8 @@ class Indicator(object):
 		self._bids = self._bids[-1000:]
 		self.idx = self._asks.shape[0]-1
 
-		self.asks = self._asks[:self.idx+1][::-1]
-		self.bids = self._bids[:self.idx+1][::-1]
+		self.asks = np.around(self._asks[:self.idx+1][::-1], decimals=5)
+		self.bids = np.around(elf._bids[:self.idx+1][::-1], decimals=5)
 
 
 	def isIndicator(self, name, props):
@@ -95,62 +95,6 @@ class Indicator(object):
 Overlays
 '''
 
-# Average True Range
-class ATR(Indicator):
-
-	def __init__(self, period):
-		super().__init__('atr', [period], None)
-
-	def _perform_calculation(self, price_type, ohlc, idx):
-		# Properties:
-		period = self.properties[0]
-
-		# Get relevant OHLC
-		ohlc = ohlc[max((idx+1)-period, 0):idx+1]
-
-		# Check min period met
-		if ohlc.shape[0] < period:
-			return [np.nan]
-
-		# Perform calculation
-		prev_close = ohlc[-2, 3]
-		high = ohlc[-1, 1]
-		low = ohlc[-1, 2]
-
-		if idx > period:
-			if price_type == 'ask':
-				prev_atr = self._asks[idx-1, 0]
-			else:
-				prev_atr = self._bids[idx-1, 0]
-
-			if prev_close > high:
-				tr = prev_close - low
-			elif prev_close < low:
-				tr = high - prev_close
-			else:
-				tr = high - low
-
-			atr = (prev_atr * (period-1) + tr) / period
-
-		else:
-			tr_sum = 0
-			for i in range(ohlc.shape[0]):
-				if i == 0:
-					tr_sum += (ohlc[i,1] - ohlc[i,2])
-				else:
-					if prev_close > high:
-						tr_sum += prev_close - low
-					elif prev_close < low:
-						tr_sum += high - prev_close
-					else:
-						tr_sum += high - low
-
-			atr = tr_sum / period
-
-
-		return [atr]
-
-
 # Bollinger Bands
 class BOLL(Indicator):
 
@@ -170,12 +114,12 @@ class BOLL(Indicator):
 
 		# Perform calculation
 		mean = np.sum(ohlc[:,3]) / ohlc.shape[0]
-		d_sum = np.sum((ohlc - mean) ** 2)
+		d_sum = np.sum((ohlc[:,3] - mean) ** 2)
 		sd = np.sqrt(d_sum/period)
 
 		return [
 			mean + sd * std_dev,
-			mean + sd * std_dev
+			mean - sd * std_dev
 		]
 
 
@@ -287,7 +231,7 @@ class MAE(Indicator):
 
 			ema = ma / period
 
-		off = (ema * percent)
+		off = ema * (percent/100)
 		return [ema, ema + off, ema - off]
 
 
@@ -317,6 +261,62 @@ class SMA(Indicator):
 '''
 Studies
 '''
+
+# Average True Range
+class ATR(Indicator):
+
+	def __init__(self, period):
+		super().__init__('atr', [period], None)
+
+	def _perform_calculation(self, price_type, ohlc, idx):
+		# Properties:
+		period = self.properties[0]
+
+		# Get relevant OHLC
+		ohlc = ohlc[max((idx+1)-period, 0):idx+1]
+
+		# Check min period met
+		if ohlc.shape[0] < period:
+			return [np.nan]
+
+		# Perform calculation
+		prev_close = ohlc[-2, 3]
+		high = ohlc[-1, 1]
+		low = ohlc[-1, 2]
+
+		if idx > period:
+			if price_type == 'ask':
+				prev_atr = self._asks[idx-1, 0]
+			else:
+				prev_atr = self._bids[idx-1, 0]
+
+			if prev_close > high:
+				tr = prev_close - low
+			elif prev_close < low:
+				tr = high - prev_close
+			else:
+				tr = high - low
+
+			atr = (prev_atr * (period-1) + tr) / period
+
+		else:
+			tr_sum = 0
+			for i in range(ohlc.shape[0]):
+				if i == 0:
+					tr_sum += (ohlc[i,1] - ohlc[i,2])
+				else:
+					if prev_close > high:
+						tr_sum += prev_close - low
+					elif prev_close < low:
+						tr_sum += high - prev_close
+					else:
+						tr_sum += high - low
+
+			atr = tr_sum / period
+
+
+		return [atr]
+
 
 # Commodity Channel Index
 class CCI(Indicator):
