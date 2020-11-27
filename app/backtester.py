@@ -37,7 +37,7 @@ class Backtester(object):
 			if order.entry_price == None:
 				raise tl.error.OrderException('Order must contain entry price.')
 			elif order.order_type == tl.LIMIT_ORDER:
-				if direction == tl.LONG:
+				if order.direction == tl.LONG:
 					if order.entry_price > price - tl.utils.convertToPrice(min_dist):
 						raise tl.error.OrderException('Long limit order entry must be lesser than current price.')
 				else:
@@ -216,7 +216,7 @@ class Backtester(object):
 			raise tl.error.OrderException('Position close size must be greater than 0.')
 
 		else:
-			cpy = tl.Position.fromDict(self, self)
+			cpy = tl.BacktestPosition.fromDict(self, self)
 			cpy.lotsize = lotsize
 			if pos.direction == tl.LONG:
 				cpy.close_price = self.broker.getBid(pos.product)
@@ -231,7 +231,7 @@ class Backtester(object):
 		return result
 
 
-	def modifyOrder(self, order, lotsize, sl_range, tp_range, sl_price, tp_price):
+	def modifyOrder(self, order, lotsize, entry_range, entry_price, sl_range, tp_range, sl_price, tp_price):
 		if lotsize is not None:
 			order.lotsize = lotsize
 
@@ -354,20 +354,22 @@ class Backtester(object):
 		else:
 			order_type = tl.MARKET_ENTRY
 
-		pos = tl.Position.fromOrder(self.broker, order)
+		pos = tl.BacktestPosition.fromOrder(self.broker, order)
+		pos.open_time = self.broker.getTimestamp(pos.product)
 		pos.order_type = order_type
 		self.broker.positions.append(pos)
 
+		ref_id = self.broker.generateReference()
 		res = {
-			self.broker.generateReference(): {
-				'timestamp': self.broker.getTimestamp(pos.product),
+			ref_id: {
+				'timestamp': pos.open_time,
 				'type': pos.order_type,
 				'accepted': True,
 				'item': pos
 			}
 		}
 
-		return pos, res
+		return [pos], res
 
 
 	def handleOrders(self, product, timestamp, ohlc):
@@ -382,63 +384,71 @@ class Backtester(object):
 				if order.direction == tl.LONG:
 					if ask[2] <= order.entry_price:
 						# Enter Order Position LONG
-						pos, res = self.createOrderPosition(order)
+						result, res = self.createOrderPosition(order)
 
 						# Close Order
 						order.close_price = order.entry_price
-						order.close_time = self.broker.getTimestamp(product)
+						order.close_time = timestamp
 
 						# Delete Order
 						del self.broker.orders[self.broker.orders.index(order)]
 
 						# On Trade
 						self.handleTransaction(res)
+						for pos in result:
+							self.createTransactionItem(list(res.keys())[0], timestamp, pos.order_type, copy(order), copy(pos))
 
 				else:
 					if bid[1] >= order.entry_price:
 						# Enter Order Position LONG
-						pos, res = self.createOrderPosition(order)
+						result, res = self.createOrderPosition(order)
 
 						# Close Order
 						order.close_price = order.entry_price
-						order.close_time = self.broker.getTimestamp(product)
+						order.close_time = timestamp
 						
 						# Delete Order
 						del self.broker.orders[self.broker.orders.index(order)]
 
 						# On Trade
 						self.handleTransaction(res)
+						for pos in result:
+							self.createTransactionItem(list(res.keys())[0], timestamp, pos.order_type, copy(order), copy(pos))
 
 			elif order.order_type == tl.STOP_ORDER:
 				if order.direction == tl.LONG:
 					if ask[1] >= order.entry_price:
 						# Enter Order Position LONG
-						pos, res = self.createOrderPosition(order)
+						result, res = self.createOrderPosition(order)
 
 						# Close Order
 						order.close_price = order.entry_price
-						order.close_time = self.broker.getTimestamp(product)
+						order.close_time = timestamp
 
 						# Delete Order
 						del self.broker.orders[self.broker.orders.index(order)]
 
 						# On Trade
 						self.handleTransaction(res)
+						for pos in result:
+							self.createTransactionItem(list(res.keys())[0], timestamp, pos.order_type, copy(order), copy(pos))
 
 				else:
 					if bid[2] <= order.entry_price:
 						# Enter Order Position LONG
-						pos, res = self.createOrderPosition(order)
+						result, res = self.createOrderPosition(order)
 
 						# Close Order
 						order.close_price = order.entry_price
-						order.close_time = self.broker.getTimestamp(product)
+						order.close_time = timestamp
 
 						# Delete Order
 						del self.broker.orders[self.broker.orders.index(order)]
 
 						# On Trade
 						self.handleTransaction(res)
+						for pos in result:
+							self.createTransactionItem(list(res.keys())[0], timestamp, pos.order_type, copy(order), copy(pos))
 
 
 	def handleStopLoss(self, product, timestamp, ohlc):
@@ -471,7 +481,7 @@ class Backtester(object):
 
 				# On Trade
 				self.handleTransaction(res)
-				self.createTransactionItem(ref_id, pos.close_time, tl.STOP_LOSS, prev_item, copy(pos))
+				self.createTransactionItem(ref_id, timestamp, tl.STOP_LOSS, prev_item, copy(pos))
 
 
 	def handleTakeProfit(self, product, timestamp, ohlc):
@@ -506,7 +516,7 @@ class Backtester(object):
 
 				# On Trade
 				self.handleTransaction(res)
-				self.createTransactionItem(ref_id, pos.close_time, tl.TAKE_PROFIT, prev_item, copy(pos))
+				self.createTransactionItem(ref_id, timestamp, tl.TAKE_PROFIT, prev_item, copy(pos))
 
 
 	def _process_chart_data(self, charts, start, end):
@@ -534,6 +544,88 @@ class Backtester(object):
 				dataframes[i][j].index += tl.period.getPeriodOffsetSeconds(periods[i][j])
 
 		return dataframes, periods
+
+	# def _process_chart_data(selg, charts, start, end, data, smooth=False):
+	# 	periods = []
+	# 	dataframes = []
+	# 	indicator_dataframes = []
+
+	# 	if data.size > 0:
+	# 		for i in range(len(charts)):
+	# 			periods.append([])
+	# 			dataframes.append([])
+
+	# 			chart = charts[i]
+	# 			sorted_periods = sorted(chart.periods, key=lambda x: tl.period.getPeriodOffsetSeconds(x))
+	# 			for period in sorted_periods:
+	# 				# Get empty df
+	# 				# df = 
+	# 				# bar_df =
+	# 				last_ts = data.index.values[0]
+	# 				next_ts = tl.utils.getNextTimestamp(period, last_ts, now=last_ts)
+	# 				period_ohlc = np.array(data.values[0], dtype=float)
+
+	# 				indicators = [ind for ind in chart.indicators.values() if ind.period == period]
+	# 				# period_indicator_dataframes = 
+
+	# 				# Process Tick Data
+	# 				for j in data.shape[0]:
+	# 					ts = data.index.values[j]
+	# 					ohlc = data.values[j]
+
+	# 					# New Bar
+	# 					if ts >= next_ts:
+	# 						next_ts = tl.utils.getNextTimestamp(period, ts, now=last_ts)
+	# 						last_ts = next_ts
+
+	# 						if smooth:
+	# 							period_ohlc[0] = period_ohlc[3]
+	# 							period_ohlc[4] = period_ohlc[7]
+	# 							period_ohlc[1:4] = ohlc[1:4]
+	# 							period_ohlc[5:8] = ohlc[5:8]
+
+	# 						else:
+	# 							period_ohlc = ohlc
+
+	# 					# Intra Bar
+	# 					else:
+	# 						if ohlc[1] > period_ohlc[1]:
+	# 							period_ohlc[1] = ohlc[1]
+	# 						if ohlc[5] > period_ohlc[5]:
+	# 							period_ohlc[5] = ohlc[5]
+	# 						if ohlc[2] < period_ohlc[2]:
+	# 							period_ohlc[2] = ohlc[2]
+	# 						if ohlc[6] < period_ohlc[6]:
+	# 							period_ohlc[6] = ohlc[6]
+
+	# 						period_ohlc[3] = ohlc[3]
+	# 						period_ohlc[7] = ohlc[7]
+
+	# 					df.iloc[ts] = period_ohlc
+	# 					bar_df.iloc[last_ts] = period_ohlc
+
+	# 					for x in range(len(indicators)):
+	# 						ind = indicators[x]
+	# 						# Calc indicator
+	# 						ind.calculate(bar_df, ind.idx)
+	# 						# Set idx
+	# 						ind._set_idx(bar_df.shape[0]-1)
+	# 						# Add to indicator dataframes
+	# 						period_indicator_dataframes[x].iloc[ts] = np.concatenate((ind.asks[0], ind.bids[0]))
+
+
+	# 				periods[i].append(period)
+	# 				dataframes[i].append(df)
+	# 				indicator_dataframes.append(period_indicator_dataframes)
+
+	# 		return periods, dataframes
+
+	# 	else:
+	# 		# Raise no data exception
+	# 		pass
+
+
+	# def _event_loop(self, charts, periods, dataframes):
 
 
 	def _process_timestamps(self, dataframes, periods, start, end):
@@ -616,12 +708,13 @@ class Backtester(object):
 						charts[x].timestamps[period] = charts[x]._data[period].index.values[:idx+1][::-1]
 						charts[x].asks[period] = charts[x]._data[period].values[:idx+1,:4][::-1]
 						charts[x].bids[period] = charts[x]._data[period].values[:idx+1,4:][::-1]
+						charts[x]._end_timestamp = timestamp + tl.period.getPeriodOffsetSeconds(period)
 
 						# If lowest period, do position/order check
 						if j == 0:
-							self.handleOrders(charts[x].product, timestamp, ohlc)
-							self.handleStopLoss(charts[x].product, timestamp, ohlc)
-							self.handleTakeProfit(charts[x].product, timestamp, ohlc)
+							self.handleOrders(charts[x].product, charts[x]._end_timestamp, ohlc)
+							self.handleStopLoss(charts[x].product, charts[x]._end_timestamp, ohlc)
+							self.handleTakeProfit(charts[x].product, charts[x]._end_timestamp, ohlc)
 
 						# Call threaded ontick functions
 						if period in charts[x]._subscriptions:
@@ -770,11 +863,11 @@ class IGBacktester(Backtester):
 		return result
 
 
-	def modifyOrder(self, order, lotsize, sl_range, tp_range, sl_price, tp_price):
+	def modifyOrder(self, order, lotsize, entry_range, entry_price, sl_range, tp_range, sl_price, tp_price):
 		prev_item = copy(pos)
 
 		result = super(IGBacktester, self).modifyOrder(
-			order, lotsize, sl_range, tp_range, sl_price, tp_price
+			order, lotsize, entry_range, entry_price, sl_range, tp_range, sl_price, tp_price
 		)
 
 		ref_id = self.broker.generateReference()
@@ -1000,10 +1093,10 @@ class OandaBacktester(Backtester):
 		return result
 
 
-	def modifyOrder(self, order, lotsize, sl_range, tp_range, sl_price, tp_price):
+	def modifyOrder(self, order, lotsize, entry_range, entry_price, sl_range, tp_range, sl_price, tp_price):
 		prev_item = copy(order)
 
-		new_order = tl.Order.fromDict(self.broker, order)
+		new_order = tl.BacktestOrder.fromDict(self.broker, order)
 		new_order.order_id = self.broker.generateReference()
 
 		order.close_time = self.broker.getTimestamp(order.product)
@@ -1011,8 +1104,9 @@ class OandaBacktester(Backtester):
 
 		res = {}
 
+		cancel_ref_id = self.broker.generateReference()
 		cancel_res = {
-			self.broker.generateReference(): {
+			cancel_ref_id: {
 				'timestamp': order.close_time,
 				'type': tl.ORDER_CANCEL,
 				'accepted': True,
@@ -1022,13 +1116,15 @@ class OandaBacktester(Backtester):
 		res.update(cancel_res)
 
 		result = super(OandaBacktester, self).modifyOrder(
-			new_order, lotsize, sl_range, tp_range, sl_price, tp_price
+			new_order, lotsize, entry_range, entry_price, sl_range, tp_range, sl_price, tp_price
 		)
 
-		ref_id = self.broker.generateReference()
+		self.broker.orders.append(result)
+
+		create_ref_id = self.broker.generateReference()
 		timestamp = self.broker.getTimestamp(order.product)
 		modify_res = {
-			ref_id: {
+			create_ref_id: {
 				'timestamp': timestamp,
 				'type': result.order_type,
 				'accepted': True,
@@ -1038,7 +1134,8 @@ class OandaBacktester(Backtester):
 		res.update(modify_res)
 		
 		self.handleTransaction(res)
-		self.createTransactionItem(ref_id, timestamp, tl.MODIFY, prev_item, copy(result))
+		self.createTransactionItem(cancel_ref_id, timestamp, tl.ORDER_CANCEL, prev_item, order)
+		self.createTransactionItem(create_ref_id, timestamp, result.order_type, None, copy(result))
 
 		return result
 
@@ -1074,16 +1171,17 @@ class OandaBacktester(Backtester):
 
 		remaining, result = self._net_off(order.account_id, order.direction, order.lotsize)
 		if remaining > 0:
-			pos = tl.Position.fromOrder(self.broker, order)
+			pos = tl.BacktestPosition.fromOrder(self.broker, order)
 			pos.order_id = self.broker.generateReference()
 			pos.order_type = order_type
 			pos.lotsize = remaining
+			pos.open_time = self.broker.getTimestamp(order.product)
 			self.broker.positions.append(pos)
 			result.append(pos)
 
 			res = {
 				self.broker.generateReference(): {
-					'timestamp': self.broker.getTimestamp(order.product),
+					'timestamp': pos.open_time,
 					'type': pos.order_type,
 					'accepted': True,
 					'item': pos

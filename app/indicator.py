@@ -38,7 +38,7 @@ class Indicator(object):
 		self.idx = self._asks.shape[0]-1
 
 		self.asks = np.around(self._asks[:self.idx+1][::-1], decimals=5)
-		self.bids = np.around(elf._bids[:self.idx+1][::-1], decimals=5)
+		self.bids = np.around(self._bids[:self.idx+1][::-1], decimals=5)
 
 
 	def isIndicator(self, name, props):
@@ -54,7 +54,7 @@ class Indicator(object):
 		for i in range(idx, timestamps.shape[0]):
 			new_ask = [self._perform_calculation('ask', asks, i)]
 			if isinstance(self._asks, type(None)):
-				self._asks = np.array(new_ask, dtype=np.float64)
+				self._asks = np.array(new_ask, dtype=float)
 			elif i < self._asks.shape[0]:
 				self._asks[i] = new_ask[0]
 			else:
@@ -65,7 +65,7 @@ class Indicator(object):
 			new_bid = [self._perform_calculation('bid', bids, i)]
 
 			if isinstance(self._bids, type(None)):
-				self._bids = np.array(new_bid, dtype=np.float64)
+				self._bids = np.array(new_bid, dtype=float)
 			elif i < self._bids.shape[0]:
 				self._bids[i] = new_bid[0]
 			else:
@@ -315,6 +315,40 @@ class ATR(Indicator):
 			atr = tr_sum / period
 
 
+		return [atr]
+
+# Modified Average True Range
+class TR(Indicator):
+
+	def __init__(self, period):
+		super().__init__('tr', [period], None)
+
+	def _perform_calculation(self, price_type, ohlc, idx):
+		# Properties:
+		period = self.properties[0]
+
+		# Get relevant OHLC
+		ohlc = ohlc[max((idx+1)-(period+1), 0):idx+1]
+
+		# Check min period met
+		if ohlc.shape[0] < period+1:
+			return [np.nan]
+
+		# Perform calculation
+		tr_sum = 0
+		for i in range(1, ohlc.shape[0]):
+			prev_close = ohlc[i-1, 3]
+			high = ohlc[i, 1]
+			low = ohlc[i, 2]
+
+			if prev_close > high:
+				tr_sum += prev_close - low
+			elif prev_close < low:
+				tr_sum += high - prev_close
+			else:
+				tr_sum += high - low
+
+		atr = tr_sum / period
 		return [atr]
 
 

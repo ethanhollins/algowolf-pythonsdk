@@ -441,9 +441,13 @@ class Broker(object):
 			raise tl.error.BrokerException(f'Chart {product} doesn\'t exist.')
 
 	def getTimestamp(self, product, period=None):
-		if period is None:
-			period = self.getChart(product).getLowestPeriod()
-		return int(self.getChart(product).getTimestamp(period))
+		if self.state == State.LIVE:
+			if period is None:
+				period = self.getChart(product).getLowestPeriod()
+			return int(self.getChart(product).getTimestamp(period))
+
+		else:
+			return self.getChart(product)._end_timestamp
 
 	def updateAllPositions(self):
 		endpoint = f'/v1/strategy/{self.strategyId}/brokers/{self.brokerId}/positions'

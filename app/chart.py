@@ -71,6 +71,7 @@ class Chart(object):
 		self._data = {p:self._create_empty_df() for p in self.periods}
 		self._next = {p:None for p in self.periods}
 		self._subscriptions = {p:[] for p in self.periods}
+		self._end_timestamp = 0
 
 		self._connections = []
 
