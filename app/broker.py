@@ -196,7 +196,7 @@ class Broker(object):
 
 	def _perform_backtest(self, start, end, mode=BacktestMode.RUN, download=True, quick_download=False):
 		# Collect relevant data
-		self._collect_data(start, end, download=download, quick_download=quick_download)
+		# self._collect_data(start, end, download=download, quick_download=quick_download)
 
 		# Run backtest
 		self.backtester.performBacktest(mode.value, start=start, end=end)
@@ -830,9 +830,10 @@ class Broker(object):
 					index=result['ohlc']['timestamps'],
 					columns=[
 						'ask_open', 'ask_high', 'ask_low', 'ask_close',
+						'mid_open', 'mid_high', 'mid_low', 'mid_close',
 						'bid_open', 'bid_high', 'bid_low', 'bid_close'
 					],
-					data=np.concatenate((result['ohlc']['asks'], result['ohlc']['bids']), axis=1)
+					data=np.concatenate((result['ohlc']['asks'], result['ohlc']['mids'], result['ohlc']['bids']), axis=1)
 				)
 
 				data = pd.concat((data, result))

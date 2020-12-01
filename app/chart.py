@@ -193,8 +193,8 @@ class Chart(object):
 			queue_idx = self.strategy.tick_queue.index(queue_id)
 			time.sleep(0.01)
 
-		# Update current ask/bid prices
-		ohlc = item['item']['ask'] + item['item']['bid']
+		# Update current ask/mid/bid prices
+		ohlc = item['item']['ask'] + item['item']['mid'] + item['item']['bid']
 
 		last_ts = self._data[item['period']].index.values[-1]
 
@@ -222,7 +222,8 @@ class Chart(object):
 		idx = self._idx[item['period']]
 		self.timestamps[item['period']] = self._data[item['period']].index.values[:idx+1][::-1]
 		self.asks[item['period']] = self._data[item['period']].values[:idx+1,:4][::-1]
-		self.bids[item['period']] = self._data[item['period']].values[:idx+1,4:][::-1]
+		self.mids[item['period']] = self._data[item['period']].values[:idx+1,4:8][::-1]
+		self.bids[item['period']] = self._data[item['period']].values[:idx+1,8:][::-1]
 
 		# Send to subscribed functions
 		if self.strategy.getBroker().isLive() and item['period'] in self._subscriptions:
@@ -234,6 +235,7 @@ class Chart(object):
 				'timestamp': item['timestamp'],
 				'period': item['period'], 
 				'ask': item['item']['ask'],
+				'mid': item['item']['mid'],
 				'bid': item['item']['bid'],
 				'bar_end': item['bar_end']
 			})
@@ -309,15 +311,13 @@ class Chart(object):
 				self._subscriptions[period] = []
 
 
-	def quickDownload(self, period, start, end):
-		if not period in self.periods:
-			raise TradelibException('Period not found in chart.')
-		
+	def quickDownload(self, period, start, end, set_data=True):
 		df = self._quick_download_prices(period, start, end)
 		df = df.dropna()
 
 		# Set data to chart data store
-		self._set_data(df, period)
+		if set_data:
+			self._set_data(df, period)
 		return df
 
 

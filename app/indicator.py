@@ -12,16 +12,19 @@ class Indicator(object):
 
 		self.idx = 0
 		self.asks = None
+		self.mids = None
 		self.bids = None
 		self._asks = None
+		self._mids = None
 		self._bids = None
 
 	def _preprocessing(self, data):
 		timestamps = data.index.values
 		asks = data.values[:,:4]
-		bids = data.values[:,4:]
+		mids = data.values[:,4:8]
+		bids = data.values[:,8:]
 		
-		return timestamps, asks, bids
+		return timestamps, asks, mids, bids
 
 	def _perform_calculation(self, price_type, ohlc, idx):
 		return
@@ -29,15 +32,18 @@ class Indicator(object):
 	def _set_idx(self, idx):
 		self.idx = idx
 		self.asks = np.around(self._asks[:self.idx+1][::-1], decimals=5)
+		self.mids = np.around(self._mids[:self.idx+1][::-1], decimals=5)
 		self.bids = np.around(self._bids[:self.idx+1][::-1], decimals=5)
 
 
 	def limit(self):
 		self._asks = self._asks[-1000:]
+		self._mids = self._mids[-1000:]
 		self._bids = self._bids[-1000:]
 		self.idx = self._asks.shape[0]-1
 
 		self.asks = np.around(self._asks[:self.idx+1][::-1], decimals=5)
+		self.mids = np.around(self._mids[:self.idx+1][::-1], decimals=5)
 		self.bids = np.around(self._bids[:self.idx+1][::-1], decimals=5)
 
 
@@ -48,7 +54,7 @@ class Indicator(object):
 		)
 
 	def calculate(self, data, idx):		
-		timestamps, asks, bids = self._preprocessing(data)
+		timestamps, asks, mids, bids = self._preprocessing(data)
 
 		# Calculate ask prices
 		for i in range(idx, timestamps.shape[0]):
@@ -59,6 +65,17 @@ class Indicator(object):
 				self._asks[i] = new_ask[0]
 			else:
 				self._asks = np.concatenate((self._asks, new_ask))
+
+		# Calculate mid prices
+		for i in range(idx, timestamps.shape[0]):
+			new_mid = [self._perform_calculation('mid', mids, i)]
+
+			if isinstance(self._mids, type(None)):
+				self._mids = np.array(new_mid, dtype=float)
+			elif i < self._mids.shape[0]:
+				self._mids[i] = new_mid[0]
+			else:
+				self._mids = np.concatenate((self._mids, new_mid))
 
 		# Calculate bid prices
 		for i in range(idx, timestamps.shape[0]):
@@ -71,10 +88,6 @@ class Indicator(object):
 			else:
 				self._bids = np.concatenate((self._bids, new_bid))
 
-		# self.idx = self._asks.shape[0]-1
-
-		# self.asks = self._asks[:self.idx+1][::-1]
-		# self.bids = self._bids[:self.idx+1][::-1]
 
 	def getCurrentAsk(self):
 		return self._asks[self.idx]
@@ -108,9 +121,12 @@ class BOLL(Indicator):
 
 		# Get relevant OHLC
 		ohlc = ohlc[max((idx+1)-period, 0):idx+1]
+
 		# Check min period met
 		if ohlc.shape[0] < period:
 			return [np.nan]*2
+
+		# print(ohlc)
 
 		# Perform calculation
 		mean = np.sum(ohlc[:,3]) / ohlc.shape[0]
@@ -157,10 +173,6 @@ class EMA(Indicator):
 	def _perform_calculation(self, price_type, ohlc, idx):
 		# Properties:
 		period = self.properties[0]
-		# if price_type == 'ask':
-		# 	prev_ema = self.storage[0]
-		# else:
-		# 	prev_ema = self.storage[1]
 
 		# Get relevant OHLC
 		ohlc = ohlc[max((idx+1)-period, 0):idx+1]
@@ -173,6 +185,8 @@ class EMA(Indicator):
 		if idx > period:
 			if price_type == 'ask':
 				prev_ema = self._asks[idx-1, 0]
+			elif price_type == 'mid':
+				prev_ema = self._mids[idx-1, 0]
 			else:
 				prev_ema = self._bids[idx-1, 0]
 
@@ -185,13 +199,6 @@ class EMA(Indicator):
 				ma += ohlc[i,3]
 
 			ema = ma / period
-
-		# if price_type == 'ask':
-		# 	if self.asks is None or idx > len(self.asks)-1:
-		# 		self.storage[0] = ema
-		# else:
-		# 	if self.bids is None or idx > len(self.bids)-1:
-		# 		self.storage[1]	= ema
 
 		return [ema]
 
@@ -218,6 +225,8 @@ class MAE(Indicator):
 		if idx > period:
 			if price_type == 'ask':
 				prev_ema = self._asks[idx-1, 0]
+			elif price_type == 'mid':
+				prev_ema = self._mids[idx-1, 0]
 			else:
 				prev_ema = self._bids[idx-1, 0]
 
@@ -287,6 +296,8 @@ class ATR(Indicator):
 		if idx > period:
 			if price_type == 'ask':
 				prev_atr = self._asks[idx-1, 0]
+			elif price_type == 'mid':
+				prev_atr = self._mids[idx-1, 0]
 			else:
 				prev_atr = self._bids[idx-1, 0]
 
@@ -406,9 +417,12 @@ class RSI(Indicator):
 		if price_type == 'ask':
 			prev_gain = self.storage[0]
 			prev_loss = self.storage[1]
-		else:
+		elif price_type == 'mid':
 			prev_gain = self.storage[2]
 			prev_loss = self.storage[3]
+		else:
+			prev_gain = self.storage[4]
+			prev_loss = self.storage[5]
 
 		# Get relevant OHLC
 		ohlc = ohlc[max((idx+1)-(period+1), 0):idx+1]
@@ -446,10 +460,14 @@ class RSI(Indicator):
 			if idx > len(self.asks)-1:
 				self.storage[0] = gain_avg
 				self.storage[1] = loss_avg
-		else:
-			if idx > len(self.bids)-1:
+		elif price_type == 'mid':
+			if idx > len(self.mids)-1:
 				self.storage[2] = gain_avg
 				self.storage[3] = loss_avg
+		else:
+			if idx > len(self.bids)-1:
+				self.storage[4] = gain_avg
+				self.storage[5] = loss_avg
 
 		if loss_avg == 0.0:
 			return [100.0]

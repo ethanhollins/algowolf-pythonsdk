@@ -118,12 +118,12 @@ def isCurrentBar(period, ts, off=1):
 	return ts > now_ts - tl.period.getPeriodOffsetSeconds(period) * off
 
 
-def getNewTimestamp(self, period, c_ts, last_ts):
+def getNewTimestamp(period, c_ts, last_ts):
 	period_off = tl.period.getPeriodOffsetSeconds(period)
 	return c_ts - ((c_ts + period_off) % last_ts % period_off)
 
 
-def getNextTimestamp(self, period, ts, now=None):
+def getNextTimestamp(period, ts, now=None):
 	new_ts = ts + tl.period.getPeriodOffsetSeconds(period)
 	dt = tl.convertTimestampToTime(new_ts)
 	if tl.isWeekend(dt):
