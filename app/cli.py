@@ -55,12 +55,15 @@ def run(package, strategy_id, account_code, key, input_variables, config):
 @click.option(
 	'-c', '--config', 'config', required=True
 )
-def backtest(package, strategy_id, key, broker, _from, to, input_variables, config):
+@click.option(
+	'-s', '--spread', 'spread'
+)
+def backtest(package, strategy_id, key, broker, _from, to, input_variables, config, spread):
 	input_variables = json.loads(input_variables)
 	config = json.loads(config)
 
 	app = App(config, package, strategy_id, None, key)
-	app.backtest(broker, _from, to, 'run', input_variables)
+	app.backtest(broker, _from, to, 'run', input_variables, spread)
 
 
 @click.command('compile', short_help='Compile strategy script.')

@@ -346,20 +346,44 @@ class TR(Indicator):
 			return [np.nan]
 
 		# Perform calculation
-		tr_sum = 0
-		for i in range(1, ohlc.shape[0]):
-			prev_close = ohlc[i-1, 3]
-			high = ohlc[i, 1]
-			low = ohlc[i, 2]
+		if idx > period+1:
+			if price_type == 'ask':
+				prev = self._asks[idx-1, 0]
+			elif price_type == 'mid':
+				prev = self._mids[idx-1, 0]
+			else:
+				prev = self._bids[idx-1, 0]
+
+			prev_close = ohlc[-2, 3]
+			high = ohlc[-1, 1]
+			low = ohlc[-1, 2]
 
 			if prev_close > high:
-				tr_sum += prev_close - low
+				tr = prev_close - low
 			elif prev_close < low:
-				tr_sum += high - prev_close
+				tr = high - prev_close
 			else:
-				tr_sum += high - low
+				tr = high - low
 
-		atr = tr_sum / period
+			alpha = 1 / period
+			atr = alpha * tr + (1 - alpha) * prev
+
+		else:
+			tr_sum = 0
+			for i in range(1, ohlc.shape[0]):
+				prev_close = ohlc[i-1, 3]
+				high = ohlc[i, 1]
+				low = ohlc[i, 2]
+
+				if prev_close > high:
+					tr_sum += prev_close - low
+				elif prev_close < low:
+					tr_sum += high - prev_close
+				else:
+					tr_sum += high - low
+
+			atr = tr_sum / period
+
 		return [atr]
 
 

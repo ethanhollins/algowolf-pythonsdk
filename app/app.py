@@ -80,7 +80,7 @@ class App(object):
 			self.module = None
 
 
-	def backtest(self, broker, _from, to, mode, input_variables):
+	def backtest(self, broker, _from, to, mode, input_variables, spread):
 		e = None
 		try:
 			_from = tl.utils.convertTimestampToTime(float(_from))
@@ -92,7 +92,10 @@ class App(object):
 			self.startStrategy(input_variables)
 			self.strategy.getBroker().setName(broker)
 
-			backtest_id = self.strategy.backtest(_from, to, mode)
+			if spread is not None:
+				spread = float(spread)
+
+			backtest_id = self.strategy.backtest(_from, to, spread=spread, mode=mode)
 		except Exception as err:
 			print(traceback.format_exc(), flush=True)
 			e = err

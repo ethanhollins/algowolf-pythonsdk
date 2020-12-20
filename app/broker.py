@@ -194,23 +194,32 @@ class Broker(object):
 		self._clear_backtest_orders()
 
 
-	def _perform_backtest(self, start, end, mode=BacktestMode.RUN, download=True, quick_download=False):
+	def _perform_backtest(self, start, end, spread=None, mode=BacktestMode.RUN, download=True, quick_download=False):
 		# Collect relevant data
 		# self._collect_data(start, end, download=download, quick_download=quick_download)
 
 		# Run backtest
-		self.backtester.performBacktest(mode.value, start=start, end=end)
+		self.backtester.performBacktest(mode.value, start=start, end=end, spread=spread)
 
 
 	def _generate_backtest(self, start, end):
-		return {
+		# Generate backtest dict
+		reports = self.strategy.reports
+		result = {
 			'transactions': self.backtester.result,
+			'reports': { name:report.to_dict() for name, report in reports.items()},
+			'info': self.backtester.info,
 			'properties': {
 				'broker': self.name,
 				'start': tl.convertTimeToTimestamp(start),
 				'end': tl.convertTimeToTimestamp(end)
 			}
 		}
+
+		# Reset reports
+		self.strategy.resetReports()
+
+		return result
 
 
 	def upload(self, endpoint, payload):
@@ -250,10 +259,10 @@ class Broker(object):
 		return res
 
 
-	def backtest(self, start, end, mode=BacktestMode.RUN, upload=False, download=True, quick_download=False):
+	def backtest(self, start, end, spread=None, mode=BacktestMode.RUN, upload=False, download=True, quick_download=False):
 		self.state = State.BACKTEST
 
-		self._perform_backtest(start, end, mode=mode, download=download, quick_download=quick_download)
+		self._perform_backtest(start, end, spread=spread, mode=mode, download=download, quick_download=quick_download)
 
 		# Upload Backtest
 		endpoint = f'/v1/strategy/{self.strategyId}/backtest'
@@ -838,6 +847,7 @@ class Broker(object):
 
 				data = pd.concat((data, result))
 				last_date = tl.utils.convertTimestampToTime(result.index.values[-1])
+				print(last_date)
 			else:
 				return data[~data.index.duplicated(keep='first')]
 

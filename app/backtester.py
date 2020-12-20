@@ -11,6 +11,7 @@ class Backtester(object):
 	def __init__(self, broker):
 		self.broker = broker
 		self.result = []
+		self.info = {}
 
 		self._idx = 0
 
@@ -326,14 +327,16 @@ class Backtester(object):
 		self.result.append(item)
 
 
-	def createInfoItem(self, timestamp, item):
-		item = {
-			'timestamp': timestamp,
-			'type': tl.CREATE_INFO,
-			'item': item
-		}
+	def createInfoItem(self, product, period, timestamp, item):
+		timestamp = int(timestamp)
 
-		self.result.append(item)
+		if product not in self.info:
+			self.info[product] = {}
+		if period not in self.info[product]:
+			self.info[product][period] = {}
+		if not timestamp in self.info[product][period]:
+			self.info[product][period][timestamp] = []
+		self.info[product][period][timestamp].append(item)
 
 
 	def createLogItem(self, timestamp, item):
@@ -344,6 +347,16 @@ class Backtester(object):
 		}
 
 		self.result.append(item)
+
+
+	def createReport(self, name, columns):
+		self.reports[name] = pd.DataFrame(columns=columns)
+
+
+	def report(self, name, *data):
+		reports = self.broker.strategy.reports
+		if name in reports:
+			reports[name].loc[reports[name].shape[0]] = set(map(str, data))
 
 
 	def createOrderPosition(self, order):
@@ -391,13 +404,15 @@ class Backtester(object):
 						order.close_time = timestamp
 
 						# Delete Order
-						del self.broker.orders[self.broker.orders.index(order)]
+						for i in range(len(self.broker.orders)-1,-1,-1):
+							if self.broker.orders[i].order_id == order.order_id:
+								del self.broker.orders[i]
 
 						# On Trade
 						self.handleTransaction(res)
 						for i in res:
 							item = res[i]
-							self.createTransactionItem(i, timestamp, item['item']['order_type'], copy(order), item['item'])
+							self.createTransactionItem(i, timestamp, item['item']['order_type'], copy(order), copy(item['item']))
 
 				else:
 					if bid[1] >= order.entry_price:
@@ -409,13 +424,15 @@ class Backtester(object):
 						order.close_time = timestamp
 						
 						# Delete Order
-						del self.broker.orders[self.broker.orders.index(order)]
+						for i in range(len(self.broker.orders)-1,-1,-1):
+							if self.broker.orders[i].order_id == order.order_id:
+								del self.broker.orders[i]
 
 						# On Trade
 						self.handleTransaction(res)
 						for i in res:
 							item = res[i]
-							self.createTransactionItem(i, timestamp, item['item']['order_type'], copy(order), item['item'])
+							self.createTransactionItem(i, timestamp, item['item']['order_type'], copy(order), copy(item['item']))
 
 			elif order.order_type == tl.STOP_ORDER:
 				if order.direction == tl.LONG:
@@ -428,13 +445,15 @@ class Backtester(object):
 						order.close_time = timestamp
 
 						# Delete Order
-						del self.broker.orders[self.broker.orders.index(order)]
+						for i in range(len(self.broker.orders)-1,-1,-1):
+							if self.broker.orders[i].order_id == order.order_id:
+								del self.broker.orders[i]
 
 						# On Trade
 						self.handleTransaction(res)
 						for i in res:
 							item = res[i]
-							self.createTransactionItem(i, timestamp, item['item']['order_type'], copy(order), item['item'])
+							self.createTransactionItem(i, timestamp, item['item']['order_type'], copy(order), copy(item['item']))
 
 				else:
 					if bid[2] <= order.entry_price:
@@ -446,13 +465,15 @@ class Backtester(object):
 						order.close_time = timestamp
 
 						# Delete Order
-						del self.broker.orders[self.broker.orders.index(order)]
+						for i in range(len(self.broker.orders)-1,-1,-1):
+							if self.broker.orders[i].order_id == order.order_id:
+								del self.broker.orders[i]
 
 						# On Trade
 						self.handleTransaction(res)
 						for i in res:
 							item = res[i]
-							self.createTransactionItem(i, timestamp, item['item']['order_type'], copy(order), item['item'])
+							self.createTransactionItem(i, timestamp, item['item']['order_type'], copy(order), copy(item['item']))
 
 
 	def handleStopLoss(self, product, timestamp, ohlc):
@@ -523,7 +544,7 @@ class Backtester(object):
 				self.createTransactionItem(ref_id, timestamp, tl.TAKE_PROFIT, prev_item, copy(pos))
 
 
-	def _process_chart_data(selg, charts, start, end, smooth=False):
+	def _process_chart_data(selg, charts, start, end, spread=None):
 		periods = []
 		dataframes = []
 		indicator_dataframes = []
@@ -547,12 +568,16 @@ class Backtester(object):
 			)
 
 			if data.size > 0:
+				first_data_ts = datetime.utcfromtimestamp(data.index.values[0]).replace(
+					hour=0, minute=0, second=0, microsecond=0
+				).timestamp()
 				for j in range(len(sorted_periods)):
 					period = sorted_periods[j]
 					df = data.copy()
 					df_off = 0
 
-					next_ts = tl.utils.getNextTimestamp(period, df.index.values[0], now=df.index.values[0])
+					first_ts = df.index.values[0] - ((df.index.values[0] - first_data_ts) % tl.period.getPeriodOffsetSeconds(period))
+					next_ts = tl.utils.getNextTimestamp(period, first_ts, now=df.index.values[0])
 					period_ohlc = np.array(data.values[0], dtype=float)
 					bar_ts = []
 					bar_end_ts = []
@@ -573,7 +598,7 @@ class Backtester(object):
 							else:
 								bar_end_ts.append(last_ts)
 
-							next_ts = tl.utils.getNextTimestamp(period, ts, now=next_ts)
+							next_ts = tl.utils.getNextTimestamp(period, next_ts, now=ts)
 							bar_ts.append(next_ts - tl.period.getPeriodOffsetSeconds(period))
 
 						# Intra Bar
@@ -598,6 +623,15 @@ class Backtester(object):
 						df.iloc[x] = curr
 
 					df = df.iloc[df_off:]
+
+					# Set Artificial Spread
+					if isinstance(spread, float):
+						half_spread = tl.utils.convertToPrice(spread / 2)
+						# Ask
+						df.values[:, :4] = df.values[:, 4:8] + half_spread
+						# Bid
+						df.values[:, 8:] = df.values[:, 4:8] - half_spread
+
 					# Get Completed Bars DataFrame
 					bars_df = df.loc[df.index.intersection(bar_end_ts)]
 					bars_df.index = bar_ts[:len(bar_end_ts)]
@@ -746,68 +780,15 @@ class Backtester(object):
 
 		print('Event Loop Complete {:.2f}s'.format(time.time() - start_time), flush=True)
 
-	
-	# def _event_loop(self, charts, periods, all_ts, chart_indicies, mode):
-	# 	'''Run event loop'''
 
-	# 	start = time.time()
-
-	# 	# Convert 
-	# 	if isinstance(mode, tl.broker.BacktestMode): mode = mode.value
-
-	# 	# For Each timestamp
-	# 	for i in range(all_ts.size):
-	# 		# For Each chart
-	# 		for x in range(len(charts)):
-	# 			# For Each period
-	# 			for j in range(len(periods[x])):
-	# 				if np.all(chart_indicies[x][j,i] != -1):
-	# 					# Set current index of current chart period
-	# 					period = periods[x][j]
-	# 					charts[x]._set_idx(period, chart_indicies[x][j,i])
-
-	# 					timestamp = int(charts[x].getTimestamp(period))
-	# 					ohlc = charts[x].getLastOHLC(period)
-
-	# 					idx = charts[x]._idx[period]
-	# 					charts[x].timestamps[period] = charts[x]._data[period].index.values[:idx+1][::-1]
-	# 					charts[x].asks[period] = charts[x]._data[period].values[:idx+1,:4][::-1]
-	# 					charts[x].bids[period] = charts[x]._data[period].values[:idx+1,4:][::-1]
-	# 					charts[x]._end_timestamp = timestamp + tl.period.getPeriodOffsetSeconds(period)
-
-	# 					# If lowest period, do position/order check
-	# 					if j == 0:
-	# 						self.handleOrders(charts[x].product, charts[x]._end_timestamp, ohlc)
-	# 						self.handleStopLoss(charts[x].product, charts[x]._end_timestamp, ohlc)
-	# 						self.handleTakeProfit(charts[x].product, charts[x]._end_timestamp, ohlc)
-
-	# 					# Call threaded ontick functions
-	# 					if period in charts[x]._subscriptions:
-	# 						for func in charts[x]._subscriptions[period]:
-	# 							tick = BrokerItem({
-	# 								'chart': charts[x], 
-	# 								'timestamp': timestamp,
-	# 								'period': period, 
-	# 								'ask': ohlc[:4],
-	# 								'bid': ohlc[4:],
-	# 								'bar_end': True
-	# 							})
-
-	# 							self.broker.strategy.setTick(tick)
-	# 							func(tick)
-
-	# 		if mode == tl.broker.BacktestMode.STEP.value:
-	# 			input('(Enter) to continue...')
-
-
-	def performBacktest(self, mode, start=None, end=None):
+	def performBacktest(self, mode, start=None, end=None, spread=None):
 		# Get timestamps
 		start_ts = tl.convertTimeToTimestamp(start)
 		end_ts = tl.convertTimeToTimestamp(end)
 
 		# Process chart data
 		charts = copy(self.broker.charts)
-		all_ts, periods, dataframes, indicator_dataframes = self._process_chart_data(charts, start, end, smooth=True)
+		all_ts, periods, dataframes, indicator_dataframes = self._process_chart_data(charts, start, end, spread=spread)
 
 		# Run event loop
 		self._event_loop(charts, all_ts, periods, dataframes, indicator_dataframes)

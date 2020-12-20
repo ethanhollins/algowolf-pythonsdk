@@ -261,13 +261,13 @@ class Chart(object):
 			# Remove duplicates
 			self._data[period] = self._data[period][~self._data[period].index.duplicated(keep='first')]
 			# Round to 5 decimal places
-			self._data[period] = self._data[period].round(pd.Series([5]*8, index=self._data[period].columns))
+			self._data[period] = self._data[period].round(5)
 
 		else:
 			# Set df to data period
 			self._data[period] = df
 			# Round to 5 decimal places
-			self._data[period] = self._data[period].round(pd.Series([5]*8, index=self._data[period].columns))
+			self._data[period] = self._data[period].round(5)
 			# Reset idx
 			self._idx[period] = 0
 

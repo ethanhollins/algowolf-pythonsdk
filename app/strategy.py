@@ -3,6 +3,7 @@ import time
 import math
 import socketio
 import requests
+import pandas as pd
 from .. import app as tl
 from .broker import Broker, BacktestMode, State
 from threading import Thread
@@ -32,6 +33,7 @@ class Strategy(object):
 		self.drawing_queue = []
 		self.log_queue = []
 		self.info_queue = []
+		self.reports = {}
 		self.lastSave = time.time()
 
 		self.input_variables = {}
@@ -63,11 +65,11 @@ class Strategy(object):
 	Broker functions
 	'''
 
-	def backtest(self, start, end, mode=BacktestMode.RUN):
+	def backtest(self, start, end, spread=None, mode=BacktestMode.RUN):
 		if self.getBroker().state != State.STOPPED:
 			if isinstance(mode, str):
 				mode = BacktestMode(mode)
-			return self.getBroker().backtest(start, end, mode=mode, quick_download=True)
+			return self.getBroker().backtest(start, end, spread=spread, mode=mode, quick_download=True)
 
 		else:
 			raise tl.error.BrokerlibException('Strategy has been stopped.')
@@ -190,22 +192,58 @@ class Strategy(object):
 	GUI Functions
 	'''
 
-	def draw(self, draw_type, layer, product, price, timestamp, 
-				color='#000000', scale=1.0, rotation=0):
-		timestamp = self.lastTick.timestamp
+	def draw(self, draw_type, layer, product, value, timestamp, 
+				section_name='instrument', section_props={},
+				color='#000000', scale=1.0, rotation=0, props={}):
+		real_timestamp = self.lastTick.chart._end_timestamp
 		drawing = {
 			'id': self.broker.generateReference(),
 			'product': product,
 			'layer': layer,
 			'type': draw_type,
 			'timestamps': [int(timestamp)],
-			'prices': [price],
+			'prices': [value],
+			'section_name': section_name,
+			'section_props': section_props,
 			'properties': {
+				**{
+					'colors': [color],
+					'scale': scale,
+					'rotation': rotation
+				},
+				**props
+			}
+		}
+
+		self._create_drawing(real_timestamp, layer, drawing)
+
+
+	def text(self, text, layer, product, value, timestamp, 
+				section_name='instrument', section_props={},
+				color='#000000', font_size=10, rotation=0):
+		real_timestamp = self.lastTick.chart._end_timestamp
+		drawing = {
+			'id': self.broker.generateReference(),
+			'product': product,
+			'layer': layer,
+			'type': 'text',
+			'timestamps': [int(timestamp)],
+			'prices': [value],
+			'section_name': section_name,
+			'section_props': section_props,
+			'properties': {
+				'text': text,
 				'colors': [color],
-				'scale': scale,
+				'text': text,
+				'font_size': font_size,
 				'rotation': rotation
 			}
 		}
+
+		self._create_drawing(real_timestamp, layer, drawing)
+
+
+	def _create_drawing(self, timestamp, layer, drawing):
 		if self.getBroker().state == State.LIVE or self.getBroker().state == State.IDLE:
 			item = {
 				'timestamp': timestamp,
@@ -233,7 +271,7 @@ class Strategy(object):
 
 
 	def clearDrawingLayer(self, layer):
-		timestamp = self.lastTick.timestamp
+		timestamp = self.lastTick.chart._end_timestamp
 
 		if self.getBroker().state == State.LIVE or self.getBroker().state == State.IDLE:
 			item = {
@@ -263,7 +301,7 @@ class Strategy(object):
 
 
 	def clearAllDrawings(self):
-		timestamp = self.lastTick.timestamp
+		timestamp = self.lastTick.chart._end_timestamp
 
 		if self.getBroker().state == State.LIVE or self.getBroker().state == State.IDLE:
 			item = {
@@ -296,7 +334,7 @@ class Strategy(object):
 		# print(*objects, sep=sep, end=end, file=file, flush=True)
 		msg = sep.join(map(str, objects)) + end
 		if self.lastTick is not None:
-			timestamp = self.lastTick.timestamp
+			timestamp = self.lastTick.chart._end_timestamp
 		else:
 			timestamp = math.floor(time.time())
 
@@ -330,19 +368,23 @@ class Strategy(object):
 		return
 
 
-	def info(self, name, value):
-		timestamp = self.lastTick.timestamp
+	def info(self, product, period, name, value='', type='text', color=None):
+		timestamp = self.lastTick.chart.timestamps[period][0]
 
 		# Check if value is json serializable
 		json.dumps(value)
 
 		item = {
 			'name': str(name),
-			'value': value
+			'type': type,
+			'value': value,
+			'color': color
 		}
 
 		if self.getBroker().state == State.LIVE:
 			item = {
+				'product': product,
+				'period': period,
 				'timestamp': timestamp,
 				'type': tl.CREATE_INFO,
 				'account_id': self.getAccountCode(),
@@ -364,7 +406,26 @@ class Strategy(object):
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
 			# Handle info through backtester
-			self.getBroker().backtester.createInfoItem(timestamp, item)
+			self.getBroker().backtester.createInfoItem(product, period, timestamp, item)
+
+
+	def createReport(self, name, columns):
+		self.reports[name] = pd.DataFrame(columns=columns)
+
+
+	def resetReports(self):
+		for name in self.reports:
+			self.createReport(name, self.reports[name].columns)
+
+
+	def report(self, name, *data):
+		if name in self.reports:
+			self.reports[name].loc[self.reports[name].shape[0]] = list(map(str, data))
+		# if self.getBroker().state == State.LIVE:
+
+		# elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
+		# 	self.getBroker().backtester.report(name, *data)
+
 
 	'''
 	Setters
@@ -376,9 +437,14 @@ class Strategy(object):
 		self.info_queue = []
 		self.lastSave = time.time()
 
+		# Reset report data
+		for name in self.reports:
+			report = self.reports[name]
+			self.createReport(name, report.columns)
+
 
 	def handleDrawingsSave(self, gui):
-		if gui is None:
+		if len(gui) == 0:
 			gui = self.getGui()
 
 		if 'drawings' not in gui or not isinstance(gui['drawings'], dict):
@@ -404,7 +470,7 @@ class Strategy(object):
 		return gui
 
 	def handleLogsSave(self, gui):
-		if gui is None:
+		if len(gui) == 0:
 			gui = self.getGui()
 
 		if 'logs' not in gui or not isinstance(gui['logs'], list):
@@ -417,7 +483,7 @@ class Strategy(object):
 		return gui
 
 	def handleInfoSave(self, gui):
-		if gui is None:
+		if len(gui) == 0:
 			gui = self.getGui()
 
 		if 'info' not in gui or not isinstance(gui['info'], dict):
@@ -436,6 +502,19 @@ class Strategy(object):
 		return gui
 
 
+	def handleReportsSave(self):
+		for name in self.reports:
+			report = self.reports[name]
+			# Check if report has new data
+			if report.shape[0] > 0:
+				# Retrieve saved report and concatenate
+				old_report = self.getReport(name)
+				if old_report is not None:
+					report = pd.concat((old_report, report))
+				result[name] = report.to_dict()
+
+		return result
+
 	def getGui(self):
 		endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
 		res = self.getBroker()._session.get(
@@ -448,9 +527,21 @@ class Strategy(object):
 			return {}
 
 
+	def getReport(self, name):
+		endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}/reports/{name}'
+		res = self.getBroker()._session.get(
+			self.getBroker()._url + endpoint
+		)
+
+		if res.status_code == 200:
+			return pd.DataFrame(data=res.json())
+		else:
+			return None
+
+
 	def saveGui(self):
 		if time.time() - self.lastSave > SAVE_INTERVAL:
-			gui = None
+			gui = {}
 
 			if len(self.drawing_queue) > 0:
 				gui = self.handleDrawingsSave(gui)
@@ -461,7 +552,11 @@ class Strategy(object):
 			if len(self.info_queue) > 0:
 				gui = self.handleInfoSave(gui)
 
-			if gui is not None:
+			reports_result = self.handleReportsSave()
+			if len(reports_result) > 0:
+				gui['reports'] = reports_result
+
+			if len(gui) > 0:
 				endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
 				payload = json.dumps(gui).encode()
 				res = self.getBroker().upload(endpoint, payload)
