@@ -8,6 +8,13 @@ from datetime import datetime, timedelta
 
 class ChartItem(dict):
 
+	def __init__(self, *args, **kwargs):
+		super(ChartItem, self).__init__(*args, **kwargs)
+
+		if tl.period.TICK in self:
+			self[tl.period.TICK] = np.nan
+
+
 	def convertKey(self, key):
 		if key == 'ONE_MINUTE':
 			return tl.period.ONE_MINUTE
@@ -55,10 +62,11 @@ class IndicatorItem(dict):
 
 class Chart(object):
 
-	def __init__(self, strategy, product, periods=[], data_path='data/'):
+	def __init__(self, strategy, product, periods=[], broker='oanda', data_path='data/'):
 		self.strategy = strategy
 		self.product = product
 		self.periods = copy(periods)
+		self.broker = broker
 		
 		self.timestamps = ChartItem({p:[] for p in self.periods})
 		self.asks = ChartItem({p:[] for p in self.periods})
@@ -69,6 +77,7 @@ class Chart(object):
 		self._data_path = data_path
 		self._idx = {p:0 for p in self.periods}
 		self._data = {p:self._create_empty_df() for p in self.periods}
+
 		self._next = {p:None for p in self.periods}
 		self._subscriptions = {p:[] for p in self.periods}
 		self._end_timestamp = 0
@@ -80,6 +89,7 @@ class Chart(object):
 		columns = [
 			'timestamp', 
 			'ask_open', 'ask_high', 'ask_low', 'ask_close', 
+			'mid_open', 'mid_high', 'mid_low', 'mid_close', 
 			'bid_open', 'bid_high', 'bid_low', 'bid_close'
 		]
 		return pd.DataFrame(columns=columns).set_index('timestamp')
@@ -95,10 +105,11 @@ class Chart(object):
 	def _load_prices(self, period, start, end):
 		# Load saved data from data_path
 		df = pd.DataFrame()
-		data_dir = os.path.join(self._data_path, '{}/{}/{}/'.format(self.strategy.getBroker().name, self.product, period))
+		data_dir = os.path.join(self._data_path, '{}/{}/{}/'.format(self.broker, self.product, period))
 		data_path = os.path.join(data_dir, '{}-{}.csv'.format(start.year, start.year+1))
 		if os.path.exists(data_path):
 			ask_keys = ['ask_open', 'ask_high', 'ask_low', 'ask_close']
+			mid_keys = ['mid_open', 'mid_high', 'mid_low', 'mid_close']
 			bid_keys = ['bid_open', 'bid_high', 'bid_low', 'bid_close']
 			dtypes = {k:float for k in ask_keys + bid_keys}
 			dtypes['timestamp'] = np.int32
@@ -112,13 +123,13 @@ class Chart(object):
 			df = df.loc[df['timestamp'] <= ts_end]
 
 			df = df.set_index('timestamp')
-			return df[ask_keys + bid_keys]
+			return df[ask_keys + mid_keys + bid_keys]
 
 		return df
 
 
 	def _save_prices(self, period, df):
-		data_dir = os.path.join(self._data_path, '{}/{}/{}/'.format(self.strategy.getBroker().name, self.product, period))
+		data_dir = os.path.join(self._data_path, '{}/{}/{}/'.format(self.broker, self.product, period))
 		if not os.path.exists(data_dir):
 			os.makedirs(data_dir)
 
@@ -145,12 +156,15 @@ class Chart(object):
 			t_data.to_csv(data_path, sep=' ', header=True)
 
 
-	def _quick_download_prices(self, period, start, end):
-		ts_start = tl.utils.convertTimeToTimestamp(start)
-		ts_end = tl.utils.convertTimeToTimestamp(end)
-		df = self.strategy.getBroker()._download_historical_prices(self.product, period, start, end, None)
+	def _quick_download_prices(self, period, start=None, end=None, count=None):
+		if not start is None:
+			ts_start = tl.utils.convertTimeToTimestamp(start)
+		if not end is None:
+			ts_end = tl.utils.convertTimeToTimestamp(end)
+		df = self.strategy.getBroker()._download_historical_prices(self.broker, self.product, period, start, end, count)
 
-		df = df.loc[(ts_start <= df.index) & (df.index < ts_end)]
+		if not start is None and not end is None:
+			df = df.loc[(ts_start <= df.index) & (df.index < ts_end)]
 
 		# Return requested time range
 		return df
@@ -163,7 +177,7 @@ class Chart(object):
 		start = start.replace(start.year,1,1,0,0,0,0)
 		end = start.replace(start.year+1,1,1,0,0,0,0)
 
-		df = self.strategy.getBroker()._download_historical_prices(self.product, period, start, end, 5000)
+		df = self.strategy.getBroker()._download_historical_prices(self.broker, self.product, period, start, end, 5000)
 
 		if save:
 			self._save_prices(period, df)
@@ -193,37 +207,44 @@ class Chart(object):
 			queue_idx = self.strategy.tick_queue.index(queue_id)
 			time.sleep(0.01)
 
-		# Update current ask/mid/bid prices
-		ohlc = item['item']['ask'] + item['item']['mid'] + item['item']['bid']
-
-		last_ts = self._data[item['period']].index.values[-1]
-
-		if item['timestamp'] < last_ts - tl.period.getPeriodOffsetSeconds(item['period']):
-			# Skip tick
-			del self.strategy.tick_queue[queue_idx]
-			return
-
-		elif not item['bar_end'] and item['timestamp'] >= last_ts:
-			new_ts = self.getNewTimestamp(item['period'], item['timestamp'], last_ts)
-			self._idx[item['period']] += 1
-			self._data[item['period']].loc[new_ts] = ohlc
+		if item['period'] == tl.period.TICK:
+			self.timestamps[item['period']] = item['timestamp']
+			self.asks[item['period']] = item['item']['ask']
+			self.mids[item['period']] = item['item']['mid']
+			self.bids[item['period']] = item['item']['bid']
 
 		else:
-			self._data[item['period']].iloc[-1] = ohlc
+			# Update current ask/mid/bid prices
+			ohlc = item['item']['ask'] + item['item']['mid'] + item['item']['bid']
 
-		# Handle Indicators
-		self._handle_indicators(item['period'])
+			last_ts = self._data[item['period']].index.values[-1]
 
-		# Limit Data
-		self._data[item['period']] = self._data[item['period']].iloc[-1000:]
-		self._idx[item['period']] = self._data[item['period']].shape[0]-1
-		self._limit_indicators(item['period'])
+			if item['timestamp'] < last_ts - tl.period.getPeriodOffsetSeconds(item['period']):
+				# Skip tick
+				del self.strategy.tick_queue[queue_idx]
+				return
 
-		idx = self._idx[item['period']]
-		self.timestamps[item['period']] = self._data[item['period']].index.values[:idx+1][::-1]
-		self.asks[item['period']] = self._data[item['period']].values[:idx+1,:4][::-1]
-		self.mids[item['period']] = self._data[item['period']].values[:idx+1,4:8][::-1]
-		self.bids[item['period']] = self._data[item['period']].values[:idx+1,8:][::-1]
+			elif not item['bar_end'] and item['timestamp'] >= last_ts:
+				new_ts = self.getNewTimestamp(item['period'], item['timestamp'], last_ts)
+				self._idx[item['period']] += 1
+				self._data[item['period']].loc[new_ts] = ohlc
+
+			else:
+				self._data[item['period']].iloc[-1] = ohlc
+
+			# Handle Indicators
+			self._handle_indicators(item['period'])
+
+			# Limit Data
+			self._data[item['period']] = self._data[item['period']].iloc[-1000:]
+			self._idx[item['period']] = self._data[item['period']].shape[0]-1
+			self._limit_indicators(item['period'])
+
+			idx = self._idx[item['period']]
+			self.timestamps[item['period']] = self._data[item['period']].index.values[:idx+1][::-1]
+			self.asks[item['period']] = self._data[item['period']].values[:idx+1,:4][::-1]
+			self.mids[item['period']] = self._data[item['period']].values[:idx+1,4:8][::-1]
+			self.bids[item['period']] = self._data[item['period']].values[:idx+1,8:][::-1]
 
 		# Send to subscribed functions
 		if self.strategy.getBroker().isLive() and item['period'] in self._subscriptions:
@@ -237,10 +258,11 @@ class Chart(object):
 				'ask': item['item']['ask'],
 				'mid': item['item']['mid'],
 				'bid': item['item']['bid'],
-				'bar_end': item['bar_end']
+				'bar_end': False if item['period'] == tl.period.TICK else item['bar_end']
 			})
 			self.strategy.setTick(tick)
 
+			print(tick, flush=True)
 			for func in self._subscriptions[item['period']]:
 				func(tick)
 
@@ -305,15 +327,24 @@ class Chart(object):
 		for period in periods:
 			if period not in self.periods:
 				self.periods.append(period)
-				self._idx[period] = 0
-				self._data[period] = self._create_empty_df()
-				self._next[period] = None
-				self._subscriptions[period] = []
+
+				if not period is tl.period.TICK:
+					self._idx[period] = 0
+					self._data[period] = self._create_empty_df()
+					self._next[period] = None
+					self._subscriptions[period] = []
 
 
-	def quickDownload(self, period, start, end, set_data=True):
-		df = self._quick_download_prices(period, start, end)
+	def quickDownload(self, period, start=None, end=None, count=None, buffer_size=0, set_data=True):
+		df = self._quick_download_prices(period, start=start, end=end, count=count)
+		if buffer_size > 0:
+			buffer_df = self._quick_download_prices(period, end=start, count=buffer_size)
+
+			df = pd.concat((buffer_df, df))
+			df = df[~df.index.duplicated(keep='first')]
+
 		df = df.dropna()
+		df.sort_index(inplace=True)
 
 		# Set data to chart data store
 		if set_data:
@@ -400,7 +431,9 @@ class Chart(object):
 				'broker_id': self.strategy.brokerId,
 				'field': 'ontick',
 				'items': {
-					self.product: periods
+					self.broker: {
+						self.product: periods
+					}
 				}
 			},
 			namespace='/user'
@@ -512,7 +545,7 @@ class Chart(object):
 
 	def isChart(self, broker, product):
 		return (
-			broker.name == self.strategy.getBroker().name and
+			broker == self.broker and
 			product == self.product
 		)
 

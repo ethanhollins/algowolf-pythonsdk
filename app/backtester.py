@@ -544,7 +544,7 @@ class Backtester(object):
 				self.createTransactionItem(ref_id, timestamp, tl.TAKE_PROFIT, prev_item, copy(pos))
 
 
-	def _process_chart_data(selg, charts, start, end, spread=None):
+	def _process_chart_data(self, charts, start, end, spread=None):
 		periods = []
 		dataframes = []
 		indicator_dataframes = []
@@ -563,18 +563,17 @@ class Backtester(object):
 
 			data = chart.quickDownload(
 				tl.period.ONE_MINUTE, 
-				tl.utils.getCountDate(tl.period.ONE_MINUTE, 1000, end=start), end,
-				set_data=False
+				start, end, set_data=False
 			)
 
 			if data.size > 0:
 				first_data_ts = datetime.utcfromtimestamp(data.index.values[0]).replace(
 					hour=0, minute=0, second=0, microsecond=0
 				).timestamp()
+				df_off = 0
 				for j in range(len(sorted_periods)):
 					period = sorted_periods[j]
 					df = data.copy()
-					df_off = 0
 
 					first_ts = df.index.values[0] - ((df.index.values[0] - first_data_ts) % tl.period.getPeriodOffsetSeconds(period))
 					next_ts = tl.utils.getNextTimestamp(period, first_ts, now=df.index.values[0])
@@ -593,13 +592,16 @@ class Backtester(object):
 
 						# New Bar
 						if ts >= next_ts:
-							if len(bar_ts) == 0:
+							if len(bar_ts) == 0 and j == 0:
 								df_off = x
-							else:
-								bar_end_ts.append(last_ts)
 
-							next_ts = tl.utils.getNextTimestamp(period, next_ts, now=ts)
+							bar_end_ts.append(last_ts)
+
+							if ts > next_ts + tl.period.getPeriodOffsetSeconds(period):
+								print(f'Missing: {ts} -> {next_ts} -> {last_ts} -> {tl.utils.getNextTimestamp(period, next_ts, now=ts)}')
 							bar_ts.append(next_ts - tl.period.getPeriodOffsetSeconds(period))
+							next_ts = tl.utils.getNextTimestamp(period, next_ts, now=ts)
+							
 
 						# Intra Bar
 						else:
@@ -622,7 +624,15 @@ class Backtester(object):
 
 						df.iloc[x] = curr
 
-					df = df.iloc[df_off:]
+					prev_bars_df = chart.quickDownload(
+						period, end=start, count=1000, set_data=False
+					)
+
+					# Get Completed Bars DataFrame
+					bars_df = df.loc[df.index.intersection(bar_end_ts)]
+					bars_df.index = bar_ts[:len(bar_end_ts)]
+
+					bars_df = pd.concat((prev_bars_df, bars_df))
 
 					# Set Artificial Spread
 					if isinstance(spread, float):
@@ -632,75 +642,71 @@ class Backtester(object):
 						# Bid
 						df.values[:, 8:] = df.values[:, 4:8] - half_spread
 
-					# Get Completed Bars DataFrame
-					bars_df = df.loc[df.index.intersection(bar_end_ts)]
-					bars_df.index = bar_ts[:len(bar_end_ts)]
-					period_indicator_arrays = []
+						# Ask
+						bars_df.values[:, :4] = bars_df.values[:, 4:8] + half_spread
+						# Bid
+						bars_df.values[:, 8:] = bars_df.values[:, 4:8] - half_spread
+					
+					bars_start_idx = prev_bars_df.shape[0]
 
 					# Process Indicators
+					period_indicator_arrays = []
+					indicator_dataframes[i].append([])
 					for y in range(len(indicators)):
 						ind = indicators[y]
+
+						# Calculate initial bars
+						ind.calculate(bars_df.iloc[:prev_bars_df.shape[0]], 0)
+
+						indicator_array = None
 						ind_asks = None
 						ind_mids = None
 						ind_bids = None
 						bars_idx = 0
+
 						for x in range(df.shape[0]):
-							c_df = bars_df.iloc[:bars_idx+1].copy()
+							c_df = bars_df.iloc[:bars_start_idx+bars_idx+1].copy()
 							c_df.iloc[-1] = df.iloc[x]
 						
 							# Calc indicator
-							asks = ind._perform_calculation('ask', c_df.values[:, :4], bars_idx)
-							mids = ind._perform_calculation('mid', c_df.values[:, 4:8], bars_idx)
-							bids = ind._perform_calculation('bid', c_df.values[:, 8:], bars_idx)
+							asks = ind._perform_calculation('ask', c_df.values[:, :4], bars_start_idx+bars_idx)
+							mids = ind._perform_calculation('mid', c_df.values[:, 4:8], bars_start_idx+bars_idx)
+							bids = ind._perform_calculation('bid', c_df.values[:, 8:], bars_start_idx+bars_idx)
 
 							if ind_asks is None and ind_bids is None:
 								ind_asks = np.zeros((bars_df.shape[0], len(asks)), dtype=float)
+								ind_asks[:prev_bars_df.shape[0]] = ind._asks
 								ind_mids = np.zeros((bars_df.shape[0], len(mids)), dtype=float)
+								ind_mids[:prev_bars_df.shape[0]] = ind._mids
 								ind_bids = np.zeros((bars_df.shape[0], len(bids)), dtype=float)
+								ind_bids[:prev_bars_df.shape[0]] = ind._bids
 
-							if bars_idx <= bars_df.shape[0]-1:
-								ind_asks[bars_idx] = asks
-								ind_mids[bars_idx] = mids
-								ind_bids[bars_idx] = bids
+							if bars_start_idx+bars_idx < bars_df.shape[0]:
+								ind_asks[bars_start_idx+bars_idx] = asks
+								ind_mids[bars_start_idx+bars_idx] = mids
+								ind_bids[bars_start_idx+bars_idx] = bids
 
-								ind._asks = ind_asks[:bars_idx+1]
-								ind._mids = ind_mids[:bars_idx+1]
-								ind._bids = ind_bids[:bars_idx+1]
+								ind._asks = ind_asks[:bars_start_idx+bars_idx+1]
+								ind._mids = ind_mids[:bars_start_idx+bars_idx+1]
+								ind._bids = ind_bids[:bars_start_idx+bars_idx+1]
 
-								if df.index.values[x] == bar_end_ts[bars_idx]:
-									bars_idx += 1
+								if indicator_array is None:
+									indicator_array = np.zeros((df.shape[0], len(asks)*3), dtype=float)
 
-							# Add to indicator dataframes
-							if len(period_indicator_arrays) <= y:
-								period_indicator_arrays.append(
-									np.zeros((df.shape[0], len(asks)*3), dtype=float)
-								)
-							else:
-								period_indicator_arrays[y][x] = np.concatenate((asks, mids, bids))
+								indicator_array[x] = np.concatenate((asks, mids, bids))
 
-					start_idx = np.abs(df.index.values - start_ts).argmin()
-					bars_start_idx = np.abs(bars_df.index.values - start_ts).argmin()
-					all_ts = np.concatenate((all_ts, df.index.values[start_idx:]))
+							if bars_idx < len(bar_end_ts) and df.index.values[x] == bar_end_ts[bars_idx]:
+								bars_idx += 1
+							
+						indicator_dataframes[i][j].append(pd.DataFrame(index=df.index.copy(), data=indicator_array))
 
-					indicator_dataframes[i].append([])
-					bars_intercept = np.in1d(df.index.values, bar_end_ts)
-					for x in range(len(indicators)):
-						ind = indicators[x]
-						array = np.copy(period_indicator_arrays[x])
-						bar_array = array[bars_intercept]
-
-						result_size = int(bar_array.shape[1]/3)
-						ind._asks = bar_array[:, :result_size]
-						ind._mids = bar_array[:, result_size:result_size*2]
-						ind._bids = bar_array[:, result_size*2:]
-
-						indicator_dataframes[i][j].append(pd.DataFrame(index=df.iloc[start_idx:].index.copy(), data=array[start_idx:]))
-
+					all_ts = np.concatenate((all_ts, df.index.values))
 					chart._data[period] = bars_df
 					chart._set_idx(period, bars_start_idx-1)
 
 					periods[i].append(period)
-					dataframes[i].append(df.iloc[start_idx:])
+					# dataframes[i].append(df.iloc[start_idx:])
+					dataframes[i].append(df)
 
 		all_ts = np.unique(np.sort(all_ts))
 		return all_ts, periods, dataframes, indicator_dataframes
@@ -723,20 +729,24 @@ class Backtester(object):
 					idx = chart._idx[period]
 					bar_end = False
 
+					period_data = chart._data[period]
 					if (
 						x+1 < all_ts.size and
-						idx+1 < chart._data[period].shape[0] and 
-						all_ts[x+1] >= chart._data[period].index.values[idx+1]
+						idx+1 < period_data.shape[0] and 
+						all_ts[x+1] >= period_data.index.values[idx+1]
 					):
 						bar_end = True
-						tick_timestamp = chart._data[period].index.values[idx]
+						tick_timestamp = period_data.index.values[idx]
 
 					df = dataframes[y][z]
-					chart._data[period].iloc[idx] = df.iloc[x]
-					chart.timestamps[period] = chart._data[period].index.values[:idx+1][::-1]
-					chart.asks[period] = chart._data[period].values[:idx+1,:4][::-1]
-					chart.mids[period] = chart._data[period].values[:idx+1,4:8][::-1]
-					chart.bids[period] = chart._data[period].values[:idx+1,8:][::-1]
+					period_data.iloc[idx] = df.iloc[x]
+					chart.timestamps[period] = period_data.index.values[:idx+1][::-1]
+
+					c_data = period_data.values[:idx+1]
+
+					chart.asks[period] = c_data[:, :4][::-1]
+					chart.mids[period] = c_data[:, 4:8][::-1]
+					chart.bids[period] = c_data[:, 8:][::-1]
 					# Add offset for real time because ONE MINUTE bars are being used for tick data
 					chart._end_timestamp = timestamp + tl.period.getPeriodOffsetSeconds(tl.period.ONE_MINUTE)
 
@@ -747,10 +757,17 @@ class Backtester(object):
 						ind_df = indicator_dataframes[y][z][i]
 
 						result_size = int(ind_df.shape[1]/3)
-						ind._asks[idx] = ind_df.iloc[x, :result_size]
-						ind._mids[idx] = ind_df.iloc[x, result_size:result_size*2]
-						ind._bids[idx] = ind_df.iloc[x, result_size*2:]
+						ind._asks[idx] = ind_df.values[x, :result_size]
+						ind._mids[idx] = ind_df.values[x, result_size:result_size*2]
+						ind._bids[idx] = ind_df.values[x, result_size*2:]
 						ind._set_idx(idx)
+
+					if x == 0:
+						print(period)
+						print(all_ts.size)
+						print(period_data.shape)
+						print(ind._asks.shape)
+						print(ind_df.shape)
 
 					# If lowest period, do position/order check
 					if z == 0:
@@ -775,8 +792,7 @@ class Backtester(object):
 							func(tick)
 
 					if bar_end:
-						idx += 1
-						chart._idx[period] = idx
+						chart._idx[period] = idx + 1
 
 		print('Event Loop Complete {:.2f}s'.format(time.time() - start_time), flush=True)
 

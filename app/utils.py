@@ -37,9 +37,23 @@ def convertTimestampToTime(ts):
 	return setTimezone(datetime.utcfromtimestamp(ts), 'UTC')
 
 def isWeekend(dt):
+	if isOffsetAware(dt):
+		dt = convertTimezone(dt, 'America/New_York')
+	else:
+		dt = convertTimezone(setTimezone(dt, 'UTC'), 'America/New_York')
+
 	FRI = 4
 	SAT = 5
 	SUN = 6
+
+	# isw = (
+	# 	(dt.weekday() == FRI and dt.hour >= 17) or
+	# 	dt.weekday() == SAT or
+	# 	(dt.weekday() == SUN and dt.hour < 17)
+	# )
+	# if isw:
+	# 	print(f'{dt} -> {isw}')
+	
 	return (
 		(dt.weekday() == FRI and dt.hour >= 17) or
 		dt.weekday() == SAT or
@@ -47,6 +61,11 @@ def isWeekend(dt):
 	)
 
 def getWeekendDate(dt):
+	if isOffsetAware(dt):
+		dt = convertTimezone(dt, 'America/New_York')
+	else:
+		dt = convertTimezone(setTimezone(dt, 'UTC'), 'America/New_York')
+
 	FRI = 4
 	SUN = 6
 	if dt.weekday() == SUN and dt.hour >= 17:
@@ -57,6 +76,11 @@ def getWeekendDate(dt):
 	return dt.replace(dt.year,dt.month,dt.day,17,0,0,0)
 
 def getWeekstartDate(dt):
+	if isOffsetAware(dt):
+		dt = convertTimezone(dt, 'America/New_York')
+	else:
+		dt = convertTimezone(setTimezone(dt, 'UTC'), 'America/New_York')
+
 	SUN = 6
 	if dt.weekday() == SUN and dt.hour >= 17:
 		dt += timedelta(days=7)
@@ -125,16 +149,16 @@ def getNewTimestamp(period, c_ts, last_ts):
 
 def getNextTimestamp(period, ts, now=None):
 	new_ts = ts + tl.period.getPeriodOffsetSeconds(period)
-	dt = tl.convertTimestampToTime(new_ts)
-	if tl.isWeekend(dt):
-		new_ts = tl.convertTimeToTimestamp(tl.getWeekstartDate(dt))
+	dt = convertTimestampToTime(new_ts)
+	if isWeekend(dt):
+		new_ts = convertTimeToTimestamp(getWeekstartDate(dt))
 
 	if now is not None:
-		while new_ts + tl.period.getPeriodOffsetSeconds(period) <= now:
+		while new_ts < now:
 			new_ts += tl.period.getPeriodOffsetSeconds(period)
-			dt = tl.convertTimestampToTime(new_ts)
-			if tl.isWeekend(dt):
-				new_ts = tl.convertTimeToTimestamp(tl.getWeekstartDate(dt))
+			dt = convertTimestampToTime(new_ts)
+			if isWeekend(dt):
+				new_ts = convertTimeToTimestamp(getWeekstartDate(dt))
 		
 	return new_ts
 

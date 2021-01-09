@@ -25,6 +25,7 @@ Broker Names
 BACKTEST_NAME = 'backtest'
 IG_NAME = 'ig'
 OANDA_NAME = 'oanda'
+SPOTWARE_NAME = 'spotware'
 PAPERTRADER_NAME = 'papertrader'
 
 def get_list():
@@ -106,7 +107,7 @@ class Broker(object):
 	def run(self):
 
 		strategy_info = self._initialize_strategy()
-		print(strategy_info['brokers'][self.brokerId]['broker'])
+		print(strategy_info['brokers'][self.brokerId]['broker'], flush=True)
 		self.setName(strategy_info['brokers'][self.brokerId]['broker'])
 
 		self._app.sio.on('connect', handler=self._stream_connect, namespace='/user')
@@ -124,10 +125,10 @@ class Broker(object):
 			self._backtest_and_run(self._start_from, quick_download=True)
 		else:
 			end = datetime.datetime.utcnow()
-			for chart in self.charts:
-				for period in chart.periods:
-					start = tl.utils.getCountDate(period, 1000, end=end)
-					self._collect_data(start, end, download=False, quick_download=True)
+			# for chart in self.charts:
+			# 	for period in chart.periods:
+			# start = tl.utils.getCountDate(period, 1000, end=end)
+			self._collect_data(end, end, download=False, quick_download=True)
 
 		self.updateAllPositions()
 		self.updateAllOrders()
@@ -279,6 +280,7 @@ class Broker(object):
 		self.state = State.BACKTEST_AND_RUN
 		# Collect relevant data and connect to live broker
 		end = datetime.datetime.utcnow()
+		print(f'Start: {start}, End: {end}')
 		self._perform_backtest(start, end, quick_download=quick_download)
 
 
@@ -323,7 +325,7 @@ class Broker(object):
 
 	def _collect_data(self, start, end, download=True, quick_download=False):
 		for chart in self.charts:
-			for period in chart._subscriptions:
+			for period in chart.periods:
 				if quick_download:
 					chart.quickDownload(
 						period, 
@@ -347,7 +349,7 @@ class Broker(object):
 		self.name = name
 		if self.name == OANDA_NAME:
 			self.backtester = tl.OandaBacktester(self)
-		elif self.name == IG_NAME:
+		elif self.name in (IG_NAME, SPOTWARE_NAME):
 			self.backtester = tl.IGBacktester(self)
 
 
@@ -369,6 +371,11 @@ class Broker(object):
 
 
 	def _prepare_for_live(self):
+		for i in self.positions + self.orders:
+			if not any([chart.isChart(self.name, i.product) for chart in self.charts]):
+				chart = self.getChart(i.product, tl.period.TICK, broker=self.name)
+				chart.connectAll()
+
 		for chart in self.charts:
 			chart.prepareLive()
 			period = chart.getLowestPeriod()
@@ -386,12 +393,12 @@ class Broker(object):
 		self.backtester.handleTakeProfit(product, timestamp, ohlc)
 
 
-	def _create_chart(self, product, *periods):
+	def _create_chart(self, product, *periods, broker='oanda'):
 		chart = None
 		if isinstance(self._app, App):
-			chart = self._app.getChart(self, product)
+			chart = self._app.getChart(broker, product)
 			if chart is None:
-				chart = tl.Chart(self.strategy, product, data_path=self._data_path)
+				chart = tl.Chart(self.strategy, product, broker=broker, data_path=self._data_path)
 				self._app.addChart(chart)
 		else:
 			chart = tl.Chart(self.strategy, product, data_path=self._data_path)
@@ -403,18 +410,18 @@ class Broker(object):
 	def getAllCharts(self):
 		return self.charts
 
-	def getChart(self, product, *periods):
+	def getChart(self, product, *periods, broker='oanda'):
 		for chart in self.charts:
-			if chart.isChart(self, product):
+			if chart.isChart(broker, product):
 				chart.addPeriods(*periods)
 				return chart
 
-		return self._create_chart(product, *periods)
+		return self._create_chart(product, *periods, broker=broker)
 
 
-	def chartExists(self, product):
+	def chartExists(self, broker, product):
 		for chart in self.charts:
-			if chart.isChart(self, product):
+			if chart.isChart(broker, product):
 				return True
 
 		return False
@@ -427,9 +434,9 @@ class Broker(object):
 		chart = self.getApiChart(product)
 		return chart.getLatestBid(tl.period.TICK)
 
-	def getAsk(self, product):
-		if self.chartExists(product):
-			chart = self.getChart(product)
+	def getAsk(self, product, broker='oanda'):
+		if self.chartExists(broker, product):
+			chart = self.getChart(product, broker=broker)
 			period = chart.getLowestPeriod()
 			if period is not None:
 				return chart.getLastAskOHLC(period)[3]
@@ -438,9 +445,9 @@ class Broker(object):
 		else:
 			raise tl.error.BrokerException(f'Chart {product} doesn\'t exist.')	
 
-	def getBid(self, product):
-		if self.chartExists(product):
-			chart = self.getChart(product)
+	def getBid(self, product, broker='oanda'):
+		if self.chartExists(broker, product):
+			chart = self.getChart(product, broker=broker)
 			period = chart.getLowestPeriod()
 			if period is not None:
 				return chart.getLastBidOHLC(period)[3]
@@ -449,14 +456,14 @@ class Broker(object):
 		else:
 			raise tl.error.BrokerException(f'Chart {product} doesn\'t exist.')
 
-	def getTimestamp(self, product, period=None):
+	def getTimestamp(self, product, period=None, broker='oanda'):
 		if self.state == State.LIVE:
 			if period is None:
-				period = self.getChart(product).getLowestPeriod()
-			return int(self.getChart(product).getTimestamp(period))
+				period = self.getChart(product, broker=broker).getLowestPeriod()
+			return int(self.getChart(product, broker=broker).getTimestamp(period))
 
 		else:
-			return self.getChart(product)._end_timestamp
+			return self.getChart(product, broker=broker)._end_timestamp
 
 	def updateAllPositions(self):
 		endpoint = f'/v1/strategy/{self.strategyId}/brokers/{self.brokerId}/positions'
@@ -592,8 +599,6 @@ class Broker(object):
 			else:
 				raise tl.error.BrokerException('Unrecognisable order type specified.')
 
-
-
 		else:
 			endpoint = f'/v1/strategy/{self.strategyId}/brokers/{self.brokerId}/orders'
 			payload = {
@@ -652,8 +657,6 @@ class Broker(object):
 			else:
 				raise tl.error.BrokerException('Unrecognisable order type specified.')
 
-			return result
-
 		else:
 			endpoint = f'/v1/strategy/{self.strategyId}/brokers/{self.brokerId}/orders'
 			payload = {
@@ -682,7 +685,7 @@ class Broker(object):
 					if wait_result not in result:
 						result.append(wait_result)
 
-			return result
+		return result
 
 
 	def stopAndReverse(self,
@@ -810,48 +813,116 @@ class Broker(object):
 	Data Utilities
 	'''
 
-	def _download_historical_prices(self, product, period, start, end, count):
+	def _download_historical_prices(self, broker, product, period, start, end, count):
 
-		if tl.utils.isOffsetAware(start):
-			start = tl.utils.convertTimezone(start, 'UTC')
-		else:
-			start = tl.utils.setTimezone(start, 'UTC')
-		if tl.utils.isOffsetAware(end):
-			end = tl.utils.convertTimezone(end, 'UTC')
-		else:
-			end = tl.utils.setTimezone(end, 'UTC')
+		now_time = tl.utils.setTimezone(datetime.datetime.utcnow(), 'UTC')
+		if not end is None:
+			if tl.utils.isOffsetAware(end):
+				end = tl.utils.convertTimezone(end, 'UTC')
+			else:
+				end = tl.utils.setTimezone(end, 'UTC')
+			last_date = end
 
-		last_date = start
-		data = None
-		while not self._is_last_candle_found(period, last_date, end, 1):
-			endpoint = f'/v1/prices/{self.name}/{product}/{period}'
-			res = self._session.get(
-				self._url + endpoint,
+		if not start is None:
+			if tl.utils.isOffsetAware(start):
+				start = tl.utils.convertTimezone(start, 'UTC')
+			else:
+				start = tl.utils.setTimezone(start, 'UTC')
+			last_date = start
+		
+		if start is None and end is None:
+			last_date = now_time
+
+		data = pd.DataFrame(
+			columns=[
+				'timestamps',
+				'ask_open', 'ask_high', 'ask_low', 'ask_close',
+				'mid_open', 'mid_high', 'mid_low', 'mid_close',
+				'bid_open', 'bid_high', 'bid_low', 'bid_close'
+			]
+		).set_index('timestamps')
+		while True:
+			endpoint = f'/v1/prices/{broker}/{product}/{period}'
+
+			if not start is None and not end is None:
+				res = self._session.get(
+					self._url + endpoint,
+					params = {
+						'from': last_date.strftime('%Y-%m-%dT%H:%M:%SZ'), 'to': end.strftime('%Y-%m-%dT%H:%M:%SZ'), 'tz': 'UTC'
+					}
+				)
+			else:
+				if not start is None:
+					t_start = last_date
+					t_end = tl.utils.getCountDate(period, count, start=last_date)
+					last_date = t_end
+
+				elif not end is None:
+					t_end = last_date
+					t_start = tl.utils.getCountDate(period, count, end=last_date)
+					last_date = t_start
+
+				else:
+					t_end = last_date
+					t_start = tl.utils.getCountDate(period, count, end=last_date)
+					last_date = t_start
+
 				params = {
-					'from': last_date.strftime('%Y-%m-%dT%H:%M:%SZ'), 'to': end.strftime('%Y-%m-%dT%H:%M:%SZ'), 'tz': 'UTC'
+					'from': t_start.strftime('%Y-%m-%dT%H:%M:%SZ'),
+					'to': t_end.strftime('%Y-%m-%dT%H:%M:%SZ')
 				}
-			)
+
+				res = self._session.get(
+					self._url + endpoint,
+					params=params
+				)
+
 			status_code = res.status_code
 			if status_code == 200:
 				# Convert result to dataframe
 				result = res.json()
-				result = pd.DataFrame(
-					index=result['ohlc']['timestamps'],
-					columns=[
-						'ask_open', 'ask_high', 'ask_low', 'ask_close',
-						'mid_open', 'mid_high', 'mid_low', 'mid_close',
-						'bid_open', 'bid_high', 'bid_low', 'bid_close'
-					],
-					data=np.concatenate((result['ohlc']['asks'], result['ohlc']['mids'], result['ohlc']['bids']), axis=1)
-				)
+
+				if len(result['ohlc']['timestamps']) > 0:
+					result = pd.DataFrame(
+						index=result['ohlc']['timestamps'],
+						columns=[
+							'ask_open', 'ask_high', 'ask_low', 'ask_close',
+							'mid_open', 'mid_high', 'mid_low', 'mid_close',
+							'bid_open', 'bid_high', 'bid_low', 'bid_close'
+						],
+						data=np.concatenate((result['ohlc']['asks'], result['ohlc']['mids'], result['ohlc']['bids']), axis=1)
+					)
+				else:
+					result = None
 
 				data = pd.concat((data, result))
-				last_date = tl.utils.convertTimestampToTime(result.index.values[-1])
-				print(last_date)
-			else:
-				return data[~data.index.duplicated(keep='first')]
 
-		return data[~data.index.duplicated(keep='first')]
+				if count is None:
+					new_last_date = tl.utils.convertTimestampToTime(result.index.values[-1])
+					if new_last_date == last_date or self._is_last_candle_found(period, new_last_date, end, 1):
+						data = data[~data.index.duplicated(keep='first')]
+						data.sort_index(inplace=True)
+						break
+
+					last_date = new_last_date
+
+				if not count is None:
+					data = data[~data.index.duplicated(keep='first')]
+					data.sort_index(inplace=True)
+
+					if not start is None:
+						if data.shape[0] >= count or self._is_last_candle_found(period, last_date, now_time, 1):
+							data = data[:count]
+							break
+
+					elif data.shape[0] >= count:
+						data = data[-count:]
+						break
+
+			else:
+				break
+
+		return data
 
 	def _is_last_candle_found(self, period, start_dt, end_dt, count):
 		utcnow = tl.utils.setTimezone(datetime.datetime.utcnow(), 'UTC')
@@ -991,6 +1062,9 @@ class Broker(object):
 		# Handle
 		pos = item.get('item')
 		new_pos = tl.position.Position.fromDict(self, pos)
+		# Get position chart
+		# self.getChart(new_pos.product, broker=self.name)
+		# Add position
 		self.positions.append(new_pos)
 
 		# Add to handled

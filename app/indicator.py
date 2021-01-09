@@ -2,9 +2,25 @@ import numpy as np
 import functools
 
 
+class RoundedArray(np.ndarray):
+
+	def __new__(cls, input_array, *args, **kwargs):
+		return np.asarray(input_array).view(cls)
+
+	def __init__(self, input_array, precision):
+		self._precision = precision
+
+	def __getitem__(self, idx):
+		item = super(RoundedArray, self).__getitem__(idx)
+		try:
+			return np.around(item, decimals=self._precision)
+		except:
+			return item
+
+
 class Indicator(object):
 
-	def __init__(self, name, properties, storage, period=None):
+	def __init__(self, name, properties, storage, period=None, precision=5):
 		self.name = name
 		self.properties = properties
 		self.storage = storage
@@ -18,6 +34,9 @@ class Indicator(object):
 		self._mids = None
 		self._bids = None
 
+		self.precision = precision
+
+
 	def _preprocessing(self, data):
 		timestamps = data.index.values
 		asks = data.values[:,:4]
@@ -29,11 +48,15 @@ class Indicator(object):
 	def _perform_calculation(self, price_type, ohlc, idx):
 		return
 
+
 	def _set_idx(self, idx):
 		self.idx = idx
-		self.asks = np.around(self._asks[:self.idx+1][::-1], decimals=5)
-		self.mids = np.around(self._mids[:self.idx+1][::-1], decimals=5)
-		self.bids = np.around(self._bids[:self.idx+1][::-1], decimals=5)
+		# self.asks = np.around(self._asks[:self.idx+1][::-1], decimals=5)
+		# self.mids = np.around(self._mids[:self.idx+1][::-1], decimals=5)
+		# self.bids = np.around(self._bids[:self.idx+1][::-1], decimals=5)
+		self.asks = RoundedArray(self._asks[:self.idx+1][::-1], self.precision)
+		self.mids = RoundedArray(self._mids[:self.idx+1][::-1], self.precision)
+		self.bids = RoundedArray(self._bids[:self.idx+1][::-1], self.precision)
 
 
 	def limit(self):
@@ -42,9 +65,14 @@ class Indicator(object):
 		self._bids = self._bids[-1000:]
 		self.idx = self._asks.shape[0]-1
 
-		self.asks = np.around(self._asks[:self.idx+1][::-1], decimals=5)
-		self.mids = np.around(self._mids[:self.idx+1][::-1], decimals=5)
-		self.bids = np.around(self._bids[:self.idx+1][::-1], decimals=5)
+		self.asks = RoundedArray(self._asks[:self.idx+1][::-1], self.precision)
+		self.mids = RoundedArray(self._mids[:self.idx+1][::-1], self.precision)
+		self.bids = RoundedArray(self._bids[:self.idx+1][::-1], self.precision)
+		# print(self.asks[:5], flush=True)
+
+		# self.asks = np.around(self._asks[:self.idx+1][::-1], decimals=5)
+		# self.mids = np.around(self._mids[:self.idx+1][::-1], decimals=5)
+		# self.bids = np.around(self._bids[:self.idx+1][::-1], decimals=5)
 
 
 	def isIndicator(self, name, props):
@@ -111,8 +139,8 @@ Overlays
 # Bollinger Bands
 class BOLL(Indicator):
 
-	def __init__(self, period, std_dev):
-		super().__init__('boll', [period, std_dev], None)
+	def __init__(self, period, std_dev, precision=5):
+		super().__init__('boll', [period, std_dev], None, precision=precision)
 
 	def _perform_calculation(self, price_type, ohlc, idx):
 		# Properties:
@@ -142,8 +170,8 @@ class BOLL(Indicator):
 # Donchian Channel
 class DONCH(Indicator):
 
-	def __init__(self, period):
-		super().__init__('donch', [period], None)
+	def __init__(self, period, precision=5):
+		super().__init__('donch', [period], None, precision=precision)
 
 	def _perform_calculation(self, price_type, ohlc, idx):
 		# Properties:
@@ -167,8 +195,8 @@ class DONCH(Indicator):
 # Exponential Moving Average
 class EMA(Indicator):
 
-	def __init__(self, period):
-		super().__init__('ema', [period], [0, 0])
+	def __init__(self, period, precision=5):
+		super().__init__('ema', [period], [0, 0], precision=precision)
 
 	def _perform_calculation(self, price_type, ohlc, idx):
 		# Properties:
@@ -206,8 +234,8 @@ class EMA(Indicator):
 # Moving Average Envelope
 class MAE(Indicator):
 
-	def __init__(self, period, percent, type='ema'):
-		super().__init__('mae', [period, percent], None)
+	def __init__(self, period, percent, type='ema', precision=5):
+		super().__init__('mae', [period, percent], None, precision=precision)
 
 	def _perform_calculation(self, price_type, ohlc, idx):
 		# Properties:
@@ -247,8 +275,8 @@ class MAE(Indicator):
 # Simple Moving Average
 class SMA(Indicator):
 
-	def __init__(self, period):
-		super().__init__('sma', [period], None)
+	def __init__(self, period, precision=5):
+		super().__init__('sma', [period], None, precision=precision)
 
 	def _perform_calculation(self, price_type, ohlc, idx):
 		# Properties:
@@ -274,8 +302,8 @@ Studies
 # Average True Range
 class ATR(Indicator):
 
-	def __init__(self, period):
-		super().__init__('atr', [period], None)
+	def __init__(self, period, precision=5):
+		super().__init__('atr', [period], None, precision=precision)
 
 	def _perform_calculation(self, price_type, ohlc, idx):
 		# Properties:
@@ -331,8 +359,8 @@ class ATR(Indicator):
 # Modified Average True Range
 class TR(Indicator):
 
-	def __init__(self, period):
-		super().__init__('tr', [period], None)
+	def __init__(self, period, precision=5):
+		super().__init__('tr', [period], None, precision=precision)
 
 	def _perform_calculation(self, price_type, ohlc, idx):
 		# Properties:
@@ -390,8 +418,8 @@ class TR(Indicator):
 # Commodity Channel Index
 class CCI(Indicator):
 
-	def __init__(self, period):
-		super().__init__('cci', [period], None)
+	def __init__(self, period, precision=5):
+		super().__init__('cci', [period], None, precision=precision)
 
 	def _perform_calculation(self, price_type, ohlc, idx):
 		# Properties:
@@ -432,8 +460,8 @@ class CCI(Indicator):
 # Relative Strength Index
 class RSI(Indicator):
 
-	def __init__(self, period):
-		super().__init__('rsi', [period], [0, 0, 0, 0])
+	def __init__(self, period, precision=5):
+		super().__init__('rsi', [period], [0, 0, 0, 0], precision=precision)
 
 	def _perform_calculation(self, price_type, ohlc, idx):
 		# Properties:

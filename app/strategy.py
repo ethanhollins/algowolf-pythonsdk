@@ -108,9 +108,9 @@ class Strategy(object):
 
 
 	# Chart functions
-	def getChart(self, product, *periods):
+	def getChart(self, broker, product, *periods):
 		if self.getBroker().state != State.STOPPED:
-			return self.getBroker().getChart(product, *periods)
+			return self.getBroker().getChart(product, *periods, broker=broker)
 
 		else:
 			raise tl.error.BrokerlibException('Strategy has been stopped.')
@@ -503,6 +503,7 @@ class Strategy(object):
 
 
 	def handleReportsSave(self):
+		result = {}
 		for name in self.reports:
 			report = self.reports[name]
 			# Check if report has new data
