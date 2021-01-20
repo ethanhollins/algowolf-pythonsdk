@@ -18,7 +18,9 @@ WEEKLY = 'W'
 MONTHLY = 'M'
 
 def getPeriodOffsetSeconds(period):
-	if period == ONE_MINUTE:
+	if period == TICK:
+		return 0
+	elif period == ONE_MINUTE:
 		return 60*1
 	elif period == TWO_MINUTES:
 		return 60*2

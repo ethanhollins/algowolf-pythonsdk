@@ -25,13 +25,16 @@ Broker Names
 BACKTEST_NAME = 'backtest'
 IG_NAME = 'ig'
 OANDA_NAME = 'oanda'
+FXCM_NAME = 'fxcm'
 SPOTWARE_NAME = 'spotware'
 PAPERTRADER_NAME = 'papertrader'
 
 def get_list():
 	return [
 		OANDA_NAME,
+		FXCM_NAME,
 		IG_NAME,
+		SPOTWARE_NAME
 	]
 
 class State(Enum):
@@ -347,9 +350,9 @@ class Broker(object):
 
 	def setName(self, name):
 		self.name = name
-		if self.name == OANDA_NAME:
+		if self.name in (OANDA_NAME, FXCM_NAME, SPOTWARE_NAME):
 			self.backtester = tl.OandaBacktester(self)
-		elif self.name in (IG_NAME, SPOTWARE_NAME):
+		elif self.name in (IG_NAME):
 			self.backtester = tl.IGBacktester(self)
 
 
@@ -371,26 +374,37 @@ class Broker(object):
 
 
 	def _prepare_for_live(self):
-		for i in self.positions + self.orders:
-			if not any([chart.isChart(self.name, i.product) for chart in self.charts]):
-				chart = self.getChart(i.product, tl.period.TICK, broker=self.name)
-				chart.connectAll()
+		# for i in self.positions + self.orders:
+		# 	if not any([chart.isChart(self.name, i.product) for chart in self.charts]):
+		# 		chart = self.getChart(i.product, tl.period.TICK, broker=self.name)
+		# 		chart.connectAll()
 
 		for chart in self.charts:
+			# Setup tick charts for user broker
+			if not any([chart.isChart(self.name, chart.product) for chart in self.charts]):
+				chart = self.getChart(chart.product, tl.period.TICK, broker=self.name)
+				chart.connectAll()
+
 			chart.prepareLive()
-			period = chart.getLowestPeriod()
-			if period is not None:
-				chart.subscribe(period, self._handle_tick_checks)
+			if chart.broker == self.name:
+				period = chart.getLowestPeriod()
+				if period is not None:
+					chart.subscribe(period, self._handle_tick_checks)
 
 
 	def _handle_tick_checks(self, item):
-		product = item.chart.product
-		timestamp = int(item.timestamp)
-		ohlc = np.array([item.ask[3]]*4 + [item.bid[3]]*4, dtype=np.float64)
+		if item.chart.broker == self.name:
+			product = item.chart.product
+			timestamp = int(item.timestamp)
 
-		self.backtester.handleOrders(product, timestamp, ohlc)
-		self.backtester.handleStopLoss(product, timestamp, ohlc)
-		self.backtester.handleTakeProfit(product, timestamp, ohlc)
+			if isinstance(item.ask, list):
+				ohlc = np.array([item.ask[3]]*4 + [item.bid[3]]*4, dtype=np.float64)
+			else:
+				ohlc = np.array([item.ask]*4 + [item.bid]*4, dtype=np.float64)
+
+			self.backtester.handleOrders(product, timestamp, ohlc)
+			self.backtester.handleStopLoss(product, timestamp, ohlc)
+			self.backtester.handleTakeProfit(product, timestamp, ohlc)
 
 
 	def _create_chart(self, product, *periods, broker='oanda'):
@@ -426,44 +440,72 @@ class Broker(object):
 
 		return False
 
+
+	def findChartByProduct(self, product):
+		for chart in sorted(self.charts, key=lambda x: x.broker == self.name, reverse=True):
+			if chart.product == product:
+				return chart
+
+
 	def getBrokerAsk(self, product):
 		chart = self.getApiChart(product)
 		return chart.getLatestAsk(tl.period.TICK)
+
 
 	def getBrokerBid(self, product):
 		chart = self.getApiChart(product)
 		return chart.getLatestBid(tl.period.TICK)
 
-	def getAsk(self, product, broker='oanda'):
-		if self.chartExists(broker, product):
-			chart = self.getChart(product, broker=broker)
+
+	def getAsk(self, product):
+		chart = self.findChartByProduct(product)
+		if not chart is None:
 			period = chart.getLowestPeriod()
-			if period is not None:
+			if period == tl.period.TICK:
+				return chart.asks[period]
+			elif period is not None:
 				return chart.getLastAskOHLC(period)[3]
-			else:
-				raise tl.error.BrokerException(f'No {product} data found.')
-		else:
-			raise tl.error.BrokerException(f'Chart {product} doesn\'t exist.')	
 
-	def getBid(self, product, broker='oanda'):
-		if self.chartExists(broker, product):
-			chart = self.getChart(product, broker=broker)
+		# if self.chartExists(broker, product):
+		# 	chart = self.getChart(product, broker=broker)
+		# 	period = chart.getLowestPeriod()
+		# 	if period is not None:
+		# 		return chart.getLastAskOHLC(period)[3]
+		# 	else:
+		# 		raise tl.error.BrokerException(f'No {product} data found.')
+		# else:
+		# 	raise tl.error.BrokerException(f'Chart {product} doesn\'t exist.')	
+
+
+	def getBid(self, product):
+		chart = self.findChartByProduct(product)
+		if not chart is None:
 			period = chart.getLowestPeriod()
-			if period is not None:
+			if period == tl.period.TICK:
+				return chart.bids[period]
+			elif period is not None:
 				return chart.getLastBidOHLC(period)[3]
-			else:
-				raise tl.error.BrokerException(f'No {product} data found.')
-		else:
-			raise tl.error.BrokerException(f'Chart {product} doesn\'t exist.')
 
-	def getTimestamp(self, product, period=None, broker='oanda'):
+		# if self.chartExists(broker, product):
+		# 	chart = self.getChart(product, broker=broker)
+		# 	period = chart.getLowestPeriod()
+		# 	if period is not None:
+		# 		return chart.getLastBidOHLC(period)[3]
+		# 	else:
+		# 		raise tl.error.BrokerException(f'No {product} data found.')
+		# else:
+		# 	raise tl.error.BrokerException(f'Chart {product} doesn\'t exist.')
+
+	def getTimestamp(self, product):
 		if self.state == State.LIVE:
-			if period is None:
-				period = self.getChart(product, broker=broker).getLowestPeriod()
-			return int(self.getChart(product, broker=broker).getTimestamp(period))
+			return time.time()
+			# if period is None:
+			# 	period = self.getChart(product, broker=broker).getLowestPeriod()
+			# return int(self.getChart(product, broker=broker).getTimestamp(period))
 
 		else:
-			return self.getChart(product, broker=broker)._end_timestamp
+			return self.findChartByProduct(product)._end_timestamp
+
 
 	def updateAllPositions(self):
 		endpoint = f'/v1/strategy/{self.strategyId}/brokers/{self.brokerId}/positions'
@@ -578,6 +620,9 @@ class Broker(object):
 		sl_range=None, tp_range=None,
 		sl_price=None, tp_price=None
 	):
+		if self.findChartByProduct(product) is None:
+			raise Exception('Instrument not loaded.')
+
 		result = []
 		if not self.isLive():
 			if order_type == tl.MARKET_ORDER:
@@ -636,6 +681,9 @@ class Broker(object):
 		sl_range=None, tp_range=None,
 		sl_price=None, tp_price=None
 	):
+		if self.findChartByProduct(product) is None:
+			raise Exception('Instrument not loaded.')
+
 		result = []
 		if not self.isLive():
 			if order_type == tl.MARKET_ORDER:
@@ -988,7 +1036,7 @@ class Broker(object):
 
 	def _stream_ontick(self, item):
 		try:
-			self.getChart(item['product'])._on_tick(item)
+			self.getChart(item['product'], broker=item['broker'])._on_tick(item)
 		except Exception as e:
 			print(traceback.format_exc(), flush=True)
 			self.stop()
@@ -998,7 +1046,7 @@ class Broker(object):
 	On Trade Utilities
 	'''
 
-	def _wait(self, ref, func=None, res=None, polling=0.1, timeout=5):
+	def _wait(self, ref, func=None, res=None, polling=0.1, timeout=30):
 		start = time.time()
 		while not ref in self.handled:
 			if time.time() - start >= timeout: 
@@ -1062,10 +1110,18 @@ class Broker(object):
 		# Handle
 		pos = item.get('item')
 		new_pos = tl.position.Position.fromDict(self, pos)
-		# Get position chart
-		# self.getChart(new_pos.product, broker=self.name)
+		
+		# # Get position chart
+		# print('Position placed!')
+		# if not any([chart.isChart(self.name, pos.product) for chart in self.charts]):
+		# 	print('Getting chart...')
+		# 	chart = self.getChart(pos.product, tl.period.TICK, broker=self.name)
+		# 	chart.subscribe(tl.period.TICK, self._handle_tick_checks)
+		# 	chart.connectAll()
+
 		# Add position
 		self.positions.append(new_pos)
+		print(f'position entry: {ref_id}, {self.positions}')
 
 		# Add to handled
 		self.handled[ref_id] = new_pos
@@ -1077,6 +1133,15 @@ class Broker(object):
 		# Handle
 		order = item.get('item')
 		new_order = tl.order.Order.fromDict(self, order)
+
+		# # Get order chart
+		# print('Order placed!')
+		# if not any([chart.isChart(self.name, order.product) for chart in self.charts]):
+		# 	print('Getting chart...')
+		# 	chart = self.getChart(order.product, tl.period.TICK, broker=self.name)
+		# 	chart.subscribe(tl.period.TICK, self._handle_tick_checks)
+		# 	chart.connectAll()
+
 		self.orders.append(new_order)
 
 		# Add to handled

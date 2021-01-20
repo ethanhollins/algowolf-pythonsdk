@@ -30,6 +30,8 @@ class Strategy(object):
 		)
 
 		# GUI Queues
+		self.message_queue = []
+
 		self.drawing_queue = []
 		self.log_queue = []
 		self.info_queue = []
@@ -253,15 +255,17 @@ class Strategy(object):
 			}
 
 			# Send Gui Socket Message
-			try:
-				self.app.sio.emit(
-					'ongui', 
-					{'strategy_id': self.strategyId, 'item': item}, 
-					namespace='/admin'
-				)
-			except Exception:
-				pass
+			# try:
+			# 	self.app.sio.emit(
+			# 		'ongui', 
+			# 		{'strategy_id': self.strategyId, 'item': item}, 
+			# 		namespace='/admin'
+			# 	)
+			# except Exception:
+			# 	pass
 
+			# Append to message queue
+			self.message_queue.append(item)
 			# Save to drawing queue
 			self.drawing_queue.append(item)
 
@@ -283,15 +287,17 @@ class Strategy(object):
 			}
 
 			# Send Gui Socket Message
-			try:
-				self.app.sio.emit(
-					'ongui', 
-					{'strategy_id': self.strategyId, 'item': item}, 
-					namespace='/admin'
-				)
-			except Exception:
-				pass
+			# try:
+			# 	self.app.sio.emit(
+			# 		'ongui', 
+			# 		{'strategy_id': self.strategyId, 'item': item}, 
+			# 		namespace='/admin'
+			# 	)
+			# except Exception:
+			# 	pass
 
+			# Append to message queue
+			self.message_queue.append(item)
 			# Handle to drawing queue
 			self.drawing_queue.append(item)
 
@@ -313,15 +319,17 @@ class Strategy(object):
 			}
 
 			# Send Gui Socket Message
-			try:
-				self.app.sio.emit(
-					'ongui', 
-					{'strategy_id': self.strategyId, 'item': item}, 
-					namespace='/admin'
-				)
-			except Exception:
-				pass
+			# try:
+			# 	self.app.sio.emit(
+			# 		'ongui', 
+			# 		{'strategy_id': self.strategyId, 'item': item}, 
+			# 		namespace='/admin'
+			# 	)
+			# except Exception:
+			# 	pass
 
+			# Append to message queue
+			self.message_queue.append(item)
 			# Handle to drawing queue
 			self.drawing_queue.append(item)
 
@@ -347,15 +355,17 @@ class Strategy(object):
 			}
 
 			# Send Gui Socket Message
-			try:
-				self.app.sio.emit(
-					'ongui', 
-					{'strategy_id': self.strategyId, 'item': item}, 
-					namespace='/admin'
-				)
-			except Exception:
-				pass
+			# try:
+			# 	self.app.sio.emit(
+			# 		'ongui', 
+			# 		{'strategy_id': self.strategyId, 'item': item}, 
+			# 		namespace='/admin'
+			# 	)
+			# except Exception:
+			# 	pass
 
+			# Append to message queue
+			self.message_queue.append(item)
 			# Save to log queue
 			self.log_queue.append(item)
 
@@ -392,15 +402,17 @@ class Strategy(object):
 			}
 
 			# Send Gui Socket Message
-			try:
-				self.app.sio.emit(
-					'ongui', 
-					{'strategy_id': self.strategyId, 'item': item}, 
-					namespace='/admin'
-				)
-			except Exception:
-				pass
+			# try:
+			# 	self.app.sio.emit(
+			# 		'ongui', 
+			# 		{'strategy_id': self.strategyId, 'item': item}, 
+			# 		namespace='/admin'
+			# 	)
+			# except Exception:
+			# 	pass
 
+			# Append to message queue
+			self.message_queue.append(item)
 			# Handle to info queue
 			self.info_queue.append(item)
 
@@ -441,6 +453,26 @@ class Strategy(object):
 		for name in self.reports:
 			report = self.reports[name]
 			self.createReport(name, report.columns)
+
+
+	def handleMessageQueue(self):
+		if len(self.message_queue) > 0:
+			try:
+				self.app.sio.emit(
+					'ongui', 
+					{
+						'strategy_id': self.strategyId, 
+						'item': {
+							'type': 'message_queue', 
+							'item': self.message_queue
+						}
+					}, 
+					namespace='/admin'
+				)
+			except Exception:
+				pass
+
+			self.message_queue = []
 
 
 	def handleDrawingsSave(self, gui):
@@ -610,9 +642,10 @@ class Strategy(object):
 	def setTick(self, tick):
 		self.lastTick = tick
 
+		self.handleMessageQueue()
 		# # Save GUI
-		if self.getBroker().state == State.LIVE:
-			self.saveGui()
+		# if self.getBroker().state == State.LIVE:
+		# 	self.saveGui()
 
 	'''
 	Getters

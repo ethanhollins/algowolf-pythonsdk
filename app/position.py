@@ -178,13 +178,13 @@ class Position(dict):
 			if self.close_price:
 				return round(tl.utils.convertToPips(self.close_price - self.entry_price), 2)
 			else:
-				bid = self._broker.getBid(self.product)
+				bid = self._broker.getBid(self.product, broker=self._broker.name)
 				return round(tl.utils.convertToPips(bid - self.entry_price), 2)
 		else:
 			if self.close_price:
 				return round(tl.utils.convertToPips(self.entry_price - self.close_price), 2)
 			else:
-				ask = self._broker.getAsk(self.product)
+				ask = self._broker.getAsk(self.product, broker=self._broker.name)
 				return round(tl.utils.convertToPips(self.entry_price - ask), 2)
 
 

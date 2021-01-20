@@ -497,7 +497,7 @@ class Backtester(object):
 				ref_id = self.broker.generateReference()
 				res = {
 					ref_id: {
-						'timestamp': self.broker.getTimestamp(pos.product),
+						'timestamp': timestamp,
 						'type': tl.STOP_LOSS,
 						'accepted': True,
 						'item': pos
@@ -532,7 +532,7 @@ class Backtester(object):
 				ref_id = self.broker.generateReference()
 				res = {
 					ref_id: {
-						'timestamp': self.broker.getTimestamp(pos.product),
+						'timestamp': timestamp,
 						'type': tl.TAKE_PROFIT,
 						'accepted': True,
 						'item': pos
@@ -549,6 +549,7 @@ class Backtester(object):
 		dataframes = []
 		indicator_dataframes = []
 		all_ts = []
+		tick_df = None
 
 		start_time = time.time()
 		start_ts = tl.convertTimeToTimestamp(start)
@@ -565,6 +566,15 @@ class Backtester(object):
 				tl.period.ONE_MINUTE, 
 				start, end, set_data=False
 			)
+			tick_df = data.copy()
+
+			# Set Tick Artificial Spread
+			if isinstance(spread, float):
+				half_spread = tl.utils.convertToPrice(spread / 2)
+				# Ask
+				tick_df.values[:, :4] = tick_df.values[:, 4:8] + half_spread
+				# Bid
+				tick_df.values[:, 8:] = tick_df.values[:, 4:8] - half_spread
 
 			if data.size > 0:
 				first_data_ts = datetime.utcfromtimestamp(data.index.values[0]).replace(
@@ -597,8 +607,6 @@ class Backtester(object):
 
 							bar_end_ts.append(last_ts)
 
-							if ts > next_ts + tl.period.getPeriodOffsetSeconds(period):
-								print(f'Missing: {ts} -> {next_ts} -> {last_ts} -> {tl.utils.getNextTimestamp(period, next_ts, now=ts)}')
 							bar_ts.append(next_ts - tl.period.getPeriodOffsetSeconds(period))
 							next_ts = tl.utils.getNextTimestamp(period, next_ts, now=ts)
 							
@@ -624,13 +632,16 @@ class Backtester(object):
 
 						df.iloc[x] = curr
 
+					bar_end_ts.append(ts)
+					bar_ts.append(next_ts - tl.period.getPeriodOffsetSeconds(period))
+
 					prev_bars_df = chart.quickDownload(
 						period, end=start, count=1000, set_data=False
 					)
 
 					# Get Completed Bars DataFrame
 					bars_df = df.loc[df.index.intersection(bar_end_ts)]
-					bars_df.index = bar_ts[:len(bar_end_ts)]
+					bars_df.index = bar_ts
 
 					bars_df = pd.concat((prev_bars_df, bars_df))
 
@@ -709,10 +720,10 @@ class Backtester(object):
 					dataframes[i].append(df)
 
 		all_ts = np.unique(np.sort(all_ts))
-		return all_ts, periods, dataframes, indicator_dataframes
+		return all_ts, periods, dataframes, indicator_dataframes, tick_df
 
 
-	def _event_loop(self, charts, all_ts, periods, dataframes, indicator_dataframes):
+	def _event_loop(self, charts, all_ts, periods, dataframes, indicator_dataframes, tick_df):
 		start_time = time.time()
 
 		# For Each Timestamp
@@ -731,8 +742,8 @@ class Backtester(object):
 
 					period_data = chart._data[period]
 					if (
-						x+1 < all_ts.size and
-						idx+1 < period_data.shape[0] and 
+						idx+1 < period_data.shape[0] and
+						x+1 < all_ts.shape[0] and
 						all_ts[x+1] >= period_data.index.values[idx+1]
 					):
 						bar_end = True
@@ -762,18 +773,12 @@ class Backtester(object):
 						ind._bids[idx] = ind_df.values[x, result_size*2:]
 						ind._set_idx(idx)
 
-					if x == 0:
-						print(period)
-						print(all_ts.size)
-						print(period_data.shape)
-						print(ind._asks.shape)
-						print(ind_df.shape)
-
 					# If lowest period, do position/order check
 					if z == 0:
-						self.handleOrders(chart.product, chart._end_timestamp, ohlc)
-						self.handleStopLoss(chart.product, chart._end_timestamp, ohlc)
-						self.handleTakeProfit(chart.product, chart._end_timestamp, ohlc)
+						c_tick = tick_df.values[x]
+						self.handleOrders(chart.product, chart._end_timestamp, c_tick)
+						self.handleStopLoss(chart.product, chart._end_timestamp, c_tick)
+						self.handleTakeProfit(chart.product, chart._end_timestamp, c_tick)
 
 					# Call threaded ontick functions
 					if period in chart._subscriptions:
@@ -796,6 +801,10 @@ class Backtester(object):
 
 		print('Event Loop Complete {:.2f}s'.format(time.time() - start_time), flush=True)
 
+		for i in charts:
+			for period in chart._data:
+				print(f'{period}: {chart._data[period].index.values[-1]}\n{chart._data[period].values[-1]}', flush=True)
+
 
 	def performBacktest(self, mode, start=None, end=None, spread=None):
 		# Get timestamps
@@ -804,10 +813,10 @@ class Backtester(object):
 
 		# Process chart data
 		charts = copy(self.broker.charts)
-		all_ts, periods, dataframes, indicator_dataframes = self._process_chart_data(charts, start, end, spread=spread)
+		all_ts, periods, dataframes, indicator_dataframes, tick_df = self._process_chart_data(charts, start, end, spread=spread)
 
 		# Run event loop
-		self._event_loop(charts, all_ts, periods, dataframes, indicator_dataframes)
+		self._event_loop(charts, all_ts, periods, dataframes, indicator_dataframes, tick_df)
 
 
 class IGBacktester(Backtester):

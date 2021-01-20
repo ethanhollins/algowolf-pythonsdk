@@ -213,6 +213,16 @@ class Chart(object):
 			self.mids[item['period']] = item['item']['mid']
 			self.bids[item['period']] = item['item']['bid']
 
+			tick = BrokerItem({
+				'chart': self, 
+				'timestamp': item['timestamp'],
+				'period': item['period'], 
+				'ask': item['item']['ask'],
+				'mid': item['item']['mid'],
+				'bid': item['item']['bid'],
+				'bar_end': False
+			})
+
 		else:
 			# Update current ask/mid/bid prices
 			ohlc = item['item']['ask'] + item['item']['mid'] + item['item']['bid']
@@ -258,11 +268,12 @@ class Chart(object):
 				'ask': item['item']['ask'],
 				'mid': item['item']['mid'],
 				'bid': item['item']['bid'],
-				'bar_end': False if item['period'] == tl.period.TICK else item['bar_end']
+				'bar_end': item['bar_end']
 			})
-			self.strategy.setTick(tick)
 
-			print(tick, flush=True)
+		self.strategy.setTick(tick)
+
+		if item['period'] in self._subscriptions:
 			for func in self._subscriptions[item['period']]:
 				func(tick)
 
@@ -320,7 +331,8 @@ class Chart(object):
 
 	def prepareLive(self):
 		for period in self.periods:
-			self._idx[period] = self._data[period].index.size-1
+			if not period is tl.period.TICK:
+				self._idx[period] = self._data[period].index.size-1
 
 
 	def addPeriods(self, *periods):
@@ -328,11 +340,10 @@ class Chart(object):
 			if period not in self.periods:
 				self.periods.append(period)
 
-				if not period is tl.period.TICK:
-					self._idx[period] = 0
-					self._data[period] = self._create_empty_df()
-					self._next[period] = None
-					self._subscriptions[period] = []
+				self._idx[period] = 0
+				self._data[period] = self._create_empty_df()
+				self._next[period] = None
+				self._subscriptions[period] = []
 
 
 	def quickDownload(self, period, start=None, end=None, count=None, buffer_size=0, set_data=True):
@@ -442,18 +453,14 @@ class Chart(object):
 
 
 	def subscribe(self, period, func):
-		if not period in self.periods:
-			raise TradelibException('Period not found in chart.')
-
-		self._subscriptions[period].append(func)
+		if period in self._subscriptions:
+			self._subscriptions[period].append(func)
 
 
 	def unsubscribe(self, period, func):
-		if not period in self.periods:
-			raise TradelibException('Period not found in chart.')
-
-		idx = self._subscriptions[period].index(func)
-		del self._subscriptions[period][idx]
+		if period in self._subscriptions and func in self._subscriptions[period]:
+			idx = self._subscriptions[period].index(func)
+			del self._subscriptions[period][idx]
 
 
 	def addIndicator(self, name, period, ind):
