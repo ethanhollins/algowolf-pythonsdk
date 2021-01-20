@@ -610,6 +610,12 @@ class Broker(object):
 		- All functions access brokerage directly
 	'''
 
+	def _convert_lotsize(self, lotsize):
+		if self.name == SPOTWARE_NAME:
+			return int(lotsize * 10000000)
+		else:
+			return lotsize
+
 	# Broker Functions
 
 	# TODO: ORDERS
@@ -622,6 +628,8 @@ class Broker(object):
 	):
 		if self.findChartByProduct(product) is None:
 			raise Exception('Instrument not loaded.')
+
+		lotsize = self._convert_lotsize(lotsize)
 
 		result = []
 		if not self.isLive():
@@ -683,6 +691,8 @@ class Broker(object):
 	):
 		if self.findChartByProduct(product) is None:
 			raise Exception('Instrument not loaded.')
+
+		lotsize = self._convert_lotsize(lotsize)
 
 		result = []
 		if not self.isLive():
