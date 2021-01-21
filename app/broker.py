@@ -612,7 +612,7 @@ class Broker(object):
 
 	def _convert_lotsize(self, lotsize):
 		if self.name == SPOTWARE_NAME:
-			return int(lotsize * 10000000)
+			return int(lotsize * 1000000)
 		else:
 			return lotsize
 

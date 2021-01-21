@@ -522,13 +522,17 @@ class Strategy(object):
 			gui['info'] = {}
 
 		for i in self.info_queue:
-			if i['timestamp'] not in gui['info']:
-				gui['info'][i['timestamp']] = []
+			if i['product'] not in gui['info']:
+				gui['info'][i['product']] = {}
+			if i['period'] not in gui['info'][i['product']]:
+				gui['info'][i['product']][i['period']] = {}
+			if str(int(i['timestamp'])) not in gui['info'][i['product']][i['period']]:
+				gui['info'][i['product']][i['period']][str(int(i['timestamp']))] = []
 
-			gui['info'][i['timestamp']].append(i['item'])
+			gui['info'][i['product']][i['period']][str(int(i['timestamp']))].append(i['item'])
 		
-		gui['info'] = dict(sorted(
-			gui['logs'].items(), key=lambda x: x[0]
+		gui['info'][i['product']][i['period']] = dict(sorted(
+			gui['info'][i['product']][i['period']].items(), key=lambda x: float(x[0])
 		)[-MAX_GUI:])
 		
 		return gui
@@ -644,8 +648,8 @@ class Strategy(object):
 
 		self.handleMessageQueue()
 		# # Save GUI
-		# if self.getBroker().state == State.LIVE:
-		# 	self.saveGui()
+		if self.getBroker().state == State.LIVE:
+			self.saveGui()
 
 	'''
 	Getters

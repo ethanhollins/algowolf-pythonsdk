@@ -217,7 +217,7 @@ class Backtester(object):
 			raise tl.error.OrderException('Position close size must be greater than 0.')
 
 		else:
-			cpy = tl.BacktestPosition.fromDict(self, self)
+			cpy = tl.BacktestPosition.fromDict(self, pos)
 			cpy.lotsize = lotsize
 			if pos.direction == tl.LONG:
 				cpy.close_price = self.broker.getBid(pos.product)
