@@ -612,7 +612,13 @@ class Broker(object):
 
 	def _convert_lotsize(self, lotsize):
 		if self.name == SPOTWARE_NAME:
-			return int(lotsize * 1000000)
+			return int(round(lotsize, 2) * 10000000)
+		else:
+			return lotsize
+
+	def _convert_incoming_lotsize(self, lotsize):
+		if self.name == SPOTWARE_NAME:
+			return round(lotsize / 10000000, 2)
 		else:
 			return lotsize
 
@@ -1073,6 +1079,7 @@ class Broker(object):
 		try:
 			print(items, flush=True)
 			for ref_id, item in items.items():
+				print(f'[STREAM ONTRADE]: {ref_id}, {item}')
 				result = self.onTradeHandler(ref_id, item)
 
 				# Handle result
@@ -1120,18 +1127,11 @@ class Broker(object):
 		# Handle
 		pos = item.get('item')
 		new_pos = tl.position.Position.fromDict(self, pos)
-		
-		# # Get position chart
-		# print('Position placed!')
-		# if not any([chart.isChart(self.name, pos.product) for chart in self.charts]):
-		# 	print('Getting chart...')
-		# 	chart = self.getChart(pos.product, tl.period.TICK, broker=self.name)
-		# 	chart.subscribe(tl.period.TICK, self._handle_tick_checks)
-		# 	chart.connectAll()
+		new_pos.lotsize = self._convert_incoming_lotsize(new_pos.lotsize)
 
 		# Add position
 		self.positions.append(new_pos)
-		print(f'position entry: {ref_id}, {self.positions}')
+		print(f'Position Entry: {ref_id}, {new_pos}')
 
 		# Add to handled
 		self.handled[ref_id] = new_pos
@@ -1143,14 +1143,7 @@ class Broker(object):
 		# Handle
 		order = item.get('item')
 		new_order = tl.order.Order.fromDict(self, order)
-
-		# # Get order chart
-		# print('Order placed!')
-		# if not any([chart.isChart(self.name, order.product) for chart in self.charts]):
-		# 	print('Getting chart...')
-		# 	chart = self.getChart(order.product, tl.period.TICK, broker=self.name)
-		# 	chart.subscribe(tl.period.TICK, self._handle_tick_checks)
-		# 	chart.connectAll()
+		new_order.lotsize = self._convert_incoming_lotsize(new_order.lotsize)
 
 		self.orders.append(new_order)
 
@@ -1165,12 +1158,13 @@ class Broker(object):
 		order = item.get('item')
 		result = None
 
-		if order.get('type') == tl.STOP_ORDER or order.get('type') == tl.LIMIT_ORDER:
+		if order.get('order_type') == tl.STOP_ORDER or order.get('order_type') == tl.LIMIT_ORDER:
 			for match_order in self.getAllOrders():
 				if match_order.order_id == order['order_id']:
 					match_order.entry_price = order['entry_price']
 					match_order.sl = order['sl']
 					match_order.tp = order['tp']
+					match_order.lotsize = self._convert_incoming_lotsize(order['lotsize'])
 					result = match_order
 		else:
 			for match_pos in self.getAllPositions():
@@ -1193,8 +1187,10 @@ class Broker(object):
 		for j in range(len(positions)):
 			match_pos = positions[j]
 			if match_pos.order_id == pos['order_id']:
+				pos['lotsize'] = self._convert_incoming_lotsize(pos['lotsize'])
+
 				# Handle partial position close
-				if match_pos.lotsize != pos['lotsize']:
+				if pos['lotsize'] >= match_pos.lotsize:
 					cpy = tl.position.Position.fromDict(self, pos)
 					match_pos.lotsize = match_pos.lotsize - cpy.lotsize
 					result = cpy
@@ -1222,6 +1218,8 @@ class Broker(object):
 		for j in range(len(orders)):
 			match_order = orders[j]
 			if match_order.order_id == order['order_id']:
+				order['lotsize'] = self._convert_incoming_lotsize(order['lotsize'])
+
 				# Handle partial position close
 				if match_order.lotsize != order['lotsize']:
 					cpy = tl.order.Order.fromDict(self, order)

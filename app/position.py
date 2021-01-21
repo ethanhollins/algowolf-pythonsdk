@@ -103,9 +103,10 @@ class Position(dict):
 		payload = {
 			"items": [{
 				"order_id": self.order_id,
-				"lotsize": lotsize
+				"lotsize": self._broker._convert_lotsize(lotsize)
 			}]
 		}
+		print(f'Close Position: {payload}')
 
 		res = self._broker._session.delete(
 			self._broker._url + endpoint,

@@ -719,11 +719,14 @@ class Backtester(object):
 					# dataframes[i].append(df.iloc[start_idx:])
 					dataframes[i].append(df)
 
+		print('Processing finished.', flush=True)
 		all_ts = np.unique(np.sort(all_ts))
 		return all_ts, periods, dataframes, indicator_dataframes, tick_df
 
 
 	def _event_loop(self, charts, all_ts, periods, dataframes, indicator_dataframes, tick_df):
+		print('Start Event Loop.', flush=True)
+
 		start_time = time.time()
 
 		# For Each Timestamp

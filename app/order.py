@@ -110,6 +110,9 @@ class Order(dict):
 		sl_price=None, tp_price=None
 	):
 		endpoint = f'/v1/strategy/{self._broker.strategyId}/brokers/{self._broker.brokerId}/orders'
+
+		if not lotsize is None: 
+			lotsize = self._broker._convert_lotsize(lotsize)
 		payload = {
 			"items": [{
 				"order_id": self.order_id,
@@ -118,7 +121,8 @@ class Order(dict):
 				"sl_range": sl_range,
 				"tp_range": tp_range,
 				"sl_price": sl_price,
-				"tp_price": tp_price
+				"tp_price": tp_price,
+				"lotsize": lotsize
 			}]
 		}
 
