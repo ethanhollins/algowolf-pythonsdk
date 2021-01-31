@@ -1,6 +1,7 @@
 import pendulum
 import math
 from datetime import datetime, timedelta
+from .. import app as tl
 
 '''
 Utilities
@@ -118,9 +119,13 @@ def getCountDate(period, count, start=None, end=None):
 			date = datetime.utcnow()
 			direction = -1
 
-		i = x = 0
+		x = 0
+		i = 0
 		while x < count:
-			if not isWeekend(date + timedelta(seconds=off*i*direction)):
+			if (
+				off >= tl.period.getPeriodOffsetSeconds(tl.period.WEEKLY) or
+				not isWeekend(date + timedelta(seconds=off*i*direction))
+			):
 				x += 1
 			i += 1
 

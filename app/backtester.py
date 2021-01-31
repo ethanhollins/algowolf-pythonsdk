@@ -560,7 +560,11 @@ class Backtester(object):
 			indicator_dataframes.append([])
 
 			chart = charts[i]
-			sorted_periods = sorted(chart.periods, key=lambda x: tl.period.getPeriodOffsetSeconds(x))
+			# sorted_periods = sorted(chart.periods, key=lambda x: tl.period.getPeriodOffsetSeconds(x))
+			sorted_periods = copy(chart._priority)
+
+			if tl.period.TICK in sorted_periods:
+				del sorted_periods[sorted_periods.index(tl.period.TICK)]
 
 			data = chart.quickDownload(
 				tl.period.ONE_MINUTE, 
@@ -638,6 +642,7 @@ class Backtester(object):
 					prev_bars_df = chart.quickDownload(
 						period, end=start, count=1000, set_data=False
 					)
+					print(f'[BT] {period} download complete. {prev_bars_df.shape}', flush=True)
 
 					# Get Completed Bars DataFrame
 					bars_df = df.loc[df.index.intersection(bar_end_ts)]
@@ -659,6 +664,7 @@ class Backtester(object):
 						bars_df.values[:, 8:] = bars_df.values[:, 4:8] - half_spread
 					
 					bars_start_idx = prev_bars_df.shape[0]
+					print(f'[BT] {period} spread done', flush=True)
 
 					# Process Indicators
 					period_indicator_arrays = []
@@ -710,14 +716,23 @@ class Backtester(object):
 								bars_idx += 1
 							
 						indicator_dataframes[i][j].append(pd.DataFrame(index=df.index.copy(), data=indicator_array))
+					
+					print(f'[BT] {period} indicators done.', flush=True)
 
 					all_ts = np.concatenate((all_ts, df.index.values))
 					chart._data[period] = bars_df
 					chart._set_idx(period, bars_start_idx-1)
+					
+					chart.timestamps[period] = chart._data[period].index.values[:bars_start_idx][::-1]
+					c_data = chart._data[period].values[:bars_start_idx]
+					chart.asks[period] = c_data[:, :4][::-1]
+					chart.mids[period] = c_data[:, 4:8][::-1]
+					chart.bids[period] = c_data[:, 8:][::-1]
 
 					periods[i].append(period)
 					# dataframes[i].append(df.iloc[start_idx:])
 					dataframes[i].append(df)
+					print(f'[BT] {period} done.', flush=True)
 
 		print('Processing finished.', flush=True)
 		all_ts = np.unique(np.sort(all_ts))
@@ -726,6 +741,9 @@ class Backtester(object):
 
 	def _event_loop(self, charts, all_ts, periods, dataframes, indicator_dataframes, tick_df):
 		print('Start Event Loop.', flush=True)
+
+		print(charts, flush=True)
+		print(all_ts.size, flush=True)
 
 		start_time = time.time()
 
@@ -763,6 +781,9 @@ class Backtester(object):
 					chart.bids[period] = c_data[:, 8:][::-1]
 					# Add offset for real time because ONE MINUTE bars are being used for tick data
 					chart._end_timestamp = timestamp + tl.period.getPeriodOffsetSeconds(tl.period.ONE_MINUTE)
+
+					if x == 0:
+						print(f'{period}: {idx}, {chart.timestamps[period].shape}', flush=True)
 
 					ohlc = chart.getLastOHLC(period)
 					indicators = [ind for ind in chart.indicators.values() if ind.period == period]
@@ -804,12 +825,13 @@ class Backtester(object):
 
 		print('Event Loop Complete {:.2f}s'.format(time.time() - start_time), flush=True)
 
-		for i in charts:
-			for period in chart._data:
-				print(f'{period}: {chart._data[period].index.values[-1]}\n{chart._data[period].values[-1]}', flush=True)
+		# for i in charts:
+		# 	for period in chart._data:
+		# 		print(f'{period}: {chart._data[period].index.values[-1]}\n{chart._data[period].values[-1]}', flush=True)
 
 
 	def performBacktest(self, mode, start=None, end=None, spread=None):
+		print('PERFORM BACKTEST', flush=True)
 		# Get timestamps
 		start_ts = tl.convertTimeToTimestamp(start)
 		end_ts = tl.convertTimeToTimestamp(end)
@@ -819,7 +841,12 @@ class Backtester(object):
 		all_ts, periods, dataframes, indicator_dataframes, tick_df = self._process_chart_data(charts, start, end, spread=spread)
 
 		# Run event loop
-		self._event_loop(charts, all_ts, periods, dataframes, indicator_dataframes, tick_df)
+		if all_ts.size > 0:
+			self._event_loop(charts, all_ts, periods, dataframes, indicator_dataframes, tick_df)
+			return True
+		else:
+			print('Nothing to backtest.', flush=True)
+			return False
 
 
 class IGBacktester(Backtester):

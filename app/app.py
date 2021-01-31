@@ -6,26 +6,33 @@ import time
 import traceback
 import os
 import socketio
+from enum import Enum
 from datetime import datetime, timedelta
 from threading import Thread
 
+
+class RunState(Enum):
+	RUN = 'run'
+	BACKTEST = 'backtest'
+	COMPILE = 'compile'
+
+
 class App(object):
 
-	def __init__(self, config, package, strategy_id, account_code, key):
+	def __init__(self, config, package, strategy_id, account_code):
 		if package.endswith('.py'):
 			package = package.replace('.py', '')
 			
 		self.config = config
 		self.scriptId, self.package = package.split('.')
 		self.strategyId = strategy_id
+		self.run_state = None
 
 		if account_code is not None:
 			self.brokerId, self.accountId = self._convert_account_code(account_code)
 		else:
 			self.brokerId = 'BACKTESTER'
 			self.accountId = 'ACCOUNT_1'
-
-		self.key = key
 
 		self.sio = socketio.Client()
 
@@ -42,6 +49,23 @@ class App(object):
 		return account_code.split('.')
 
 
+	def _retrieve_session_token(self, key):
+		headers = {
+			'Authorization': 'Bearer ' + key
+		}
+
+		endpoint = f'/v1/session'
+		res = requests.get(
+			self.config.get('API_URL') + endpoint,
+			headers=headers
+		)
+
+		if res.status_code == 200:
+			self.key = res.json().get('token')
+		else:
+			raise Exception('Failed to get session token.')
+
+
 	def connectSio(self):
 		headers = {
 			'Authorization': 'Bearer '+self.key
@@ -55,10 +79,12 @@ class App(object):
 
 
 	# TODO: Add accounts parameter
-	def run(self, input_variables):
+	def run(self, auth_key, input_variables):
+		self.run_state = RunState.RUN
+
 		try:
 			# Start strategy for each account
-			self.startStrategy(input_variables)
+			self.startStrategy(auth_key, input_variables)
 			if self.strategy.getBroker().state.value <= 2:
 				# Run strategy
 				self.strategy.run()
@@ -80,7 +106,9 @@ class App(object):
 			self.module = None
 
 
-	def backtest(self, broker, _from, to, mode, input_variables, spread):
+	def backtest(self, auth_key, broker, _from, to, mode, input_variables, spread):
+		self.run_state = RunState.BACKTEST
+
 		e = None
 		try:
 			_from = tl.utils.convertTimestampToTime(float(_from))
@@ -89,7 +117,7 @@ class App(object):
 			# 	_from = datetime.strptime(_from, '%Y-%m-%dT%H:%M:%SZ')
 			# if isinstance(to, str):
 			# 	to = datetime.strptime(to, '%Y-%m-%dT%H:%M:%SZ')
-			self.startStrategy(input_variables)
+			self.startStrategy(auth_key, input_variables)
 			self.strategy.getBroker().setName(broker)
 
 			if spread is not None:
@@ -107,12 +135,14 @@ class App(object):
 		return backtest_id
 
 
-	def compile(self):
+	def compile(self, auth_key):
+		self.run_state = RunState.COMPILE
+
 		account_id = 'ACCOUNT_1'
 		properties = {}
 		e = None
 		try:
-			self.startStrategy({})
+			self.startStrategy(None, {})
 
 		except Exception as err:
 			print(traceback.format_exc(), flush=True)
@@ -147,9 +177,14 @@ class App(object):
 
 		return module
 
-	def startStrategy(self, input_variables):
+	def startStrategy(self, auth_key, input_variables):
 		if self.strategy is None:
 			self.module = self.getPackageModule(f'{self.package}')
+
+			if auth_key is not None:
+				self._retrieve_session_token(auth_key)
+			else:
+				self.key = ''
 
 			self.strategy = Strategy(self, self.module, strategy_id=self.strategyId, broker_id=self.brokerId, account_id=self.accountId, user_variables=input_variables)
 
@@ -176,6 +211,9 @@ class App(object):
 				for chart in self.strategy.getBroker().getAllCharts():
 					for period in chart.periods:
 						chart.subscribe(period, self.module.onTick)
+
+			if 'onSessionStatus' in dir(self.module) and callable(self.module.onSessionStatus):
+				self.strategy.getBroker().subscribeOnSessionStatus(self.module.onSessionStatus)
 
 
 	def getStrategy(self):

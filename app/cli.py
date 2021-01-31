@@ -28,8 +28,8 @@ def run(package, strategy_id, account_code, key, input_variables, config):
 	input_variables = json.loads(input_variables)
 	config = json.loads(config)
 
-	app = App(config, package, strategy_id, account_code, key)
-	app.run(input_variables)
+	app = App(config, package, strategy_id, account_code)
+	app.run(key, input_variables)
 
 
 @click.command('backtest', short_help='Backtest strategy script.')
@@ -62,8 +62,8 @@ def backtest(package, strategy_id, key, broker, _from, to, input_variables, conf
 	input_variables = json.loads(input_variables)
 	config = json.loads(config)
 
-	app = App(config, package, strategy_id, None, key)
-	app.backtest(broker, _from, to, 'run', input_variables, spread)
+	app = App(config, package, strategy_id, None)
+	app.backtest(key, broker, _from, to, 'run', input_variables, spread)
 
 
 @click.command('compile', short_help='Compile strategy script.')
@@ -83,8 +83,8 @@ def backtest(package, strategy_id, key, broker, _from, to, input_variables, conf
 def compile(package, strategy_id, account_code, key, config):
 	config = json.loads(config)
 
-	app = App(config, package, strategy_id, account_code, key)
-	app.compile()
+	app = App(config, package, strategy_id, account_code)
+	app.compile(key)
 
 
 app.add_command(run)

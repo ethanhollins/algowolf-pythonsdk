@@ -267,7 +267,7 @@ class Strategy(object):
 			# Append to message queue
 			self.message_queue.append(item)
 			# Save to drawing queue
-			self.drawing_queue.append(item)
+			# self.drawing_queue.append(item)
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
 			# Handle drawings through backtester
@@ -299,7 +299,7 @@ class Strategy(object):
 			# Append to message queue
 			self.message_queue.append(item)
 			# Handle to drawing queue
-			self.drawing_queue.append(item)
+			# self.drawing_queue.append(item)
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
 			# Handle drawings through backtester
@@ -331,7 +331,7 @@ class Strategy(object):
 			# Append to message queue
 			self.message_queue.append(item)
 			# Handle to drawing queue
-			self.drawing_queue.append(item)
+			# self.drawing_queue.append(item)
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
 			# Handle drawings through backtester
@@ -367,7 +367,7 @@ class Strategy(object):
 			# Append to message queue
 			self.message_queue.append(item)
 			# Save to log queue
-			self.log_queue.append(item)
+			# self.log_queue.append(item)
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
 			# Handle logs through backtester
@@ -414,7 +414,7 @@ class Strategy(object):
 			# Append to message queue
 			self.message_queue.append(item)
 			# Handle to info queue
-			self.info_queue.append(item)
+			# self.info_queue.append(item)
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
 			# Handle info through backtester
@@ -431,12 +431,9 @@ class Strategy(object):
 
 
 	def report(self, name, *data):
+		# return
 		if name in self.reports:
 			self.reports[name].loc[self.reports[name].shape[0]] = list(map(str, data))
-		# if self.getBroker().state == State.LIVE:
-
-		# elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
-		# 	self.getBroker().backtester.report(name, *data)
 
 
 	'''
@@ -576,26 +573,48 @@ class Strategy(object):
 			return None
 
 
+	# def saveGui(self):
+	# 	if time.time() - self.lastSave > SAVE_INTERVAL:
+	# 		gui = {}
+
+	# 		if len(self.drawing_queue) > 0:
+	# 			gui = self.handleDrawingsSave(gui)
+
+	# 		if len(self.log_queue) > 0:
+	# 			gui = self.handleLogsSave(gui)
+
+	# 		if len(self.info_queue) > 0:
+	# 			gui = self.handleInfoSave(gui)
+
+	# 		reports_result = self.handleReportsSave()
+	# 		if len(reports_result) > 0:
+	# 			gui['reports'] = reports_result
+
+	# 		if len(gui) > 0:
+	# 			endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
+	# 			payload = json.dumps(gui).encode()
+	# 			res = self.getBroker().upload(endpoint, payload)
+
+	# 			if res.status_code == 200:
+	# 				self.resetGuiQueues()
+
+
 	def saveGui(self):
 		if time.time() - self.lastSave > SAVE_INTERVAL:
-			gui = {}
+			update = {}
 
 			if len(self.drawing_queue) > 0:
-				gui = self.handleDrawingsSave(gui)
+				update['drawings'] = self.drawing_queue
 
 			if len(self.log_queue) > 0:
-				gui = self.handleLogsSave(gui)
+				update['logs'] = self.log_queue
 
 			if len(self.info_queue) > 0:
-				gui = self.handleInfoSave(gui)
-
-			reports_result = self.handleReportsSave()
-			if len(reports_result) > 0:
-				gui['reports'] = reports_result
+				update['info'] = self.info_queue
 
 			if len(gui) > 0:
 				endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
-				payload = json.dumps(gui).encode()
+				payload = json.dumps(update).encode()
 				res = self.getBroker().upload(endpoint, payload)
 
 				if res.status_code == 200:
@@ -647,9 +666,9 @@ class Strategy(object):
 		self.lastTick = tick
 
 		self.handleMessageQueue()
-		# # Save GUI
+		# Save GUI
 		if self.getBroker().state == State.LIVE:
-			self.saveGui()
+			Thread(target=self.saveGui).start()
 
 	'''
 	Getters

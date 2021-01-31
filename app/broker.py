@@ -90,6 +90,7 @@ class Broker(object):
 		self.positions = []
 		self.orders = []
 		self.ontrade_subs = []
+		self.onsessionstatus_subs = []
 		self.handled = {}
 
 		self._session = requests.Session()
@@ -117,6 +118,7 @@ class Broker(object):
 		self._app.sio.on('disconnect', handler=self._stream_disconnect, namespace='/user')
 		self._app.sio.on('ontick', handler=self._stream_ontick, namespace='/user')
 		self._app.sio.on('ontrade', handler=self._stream_ontrade, namespace='/user')
+		self._app.sio.on('onsessionstatus', handler=self._stream_onsessionstatus, namespace='/user')
 
 		self._app.connectSio()
 
@@ -124,21 +126,25 @@ class Broker(object):
 		self._subscribe_charts(self.charts)
 
 		# If `_start_from` set, run `_backtest_and_run`
+		backtest_complete = False
 		if self._start_from is not None:
-			self._backtest_and_run(self._start_from, quick_download=True)
-		else:
+			backtest_complete = self._backtest_and_run(self._start_from, quick_download=True)
+			print(f'Backtest Complete: {backtest_complete}', flush=True)
+
+		if not backtest_complete:
 			end = datetime.datetime.utcnow()
 			# for chart in self.charts:
 			# 	for period in chart.periods:
 			# start = tl.utils.getCountDate(period, 1000, end=end)
 			self._collect_data(end, end, download=False, quick_download=True)
 
+
 		self.updateAllPositions()
 		self.updateAllOrders()
 
 		self._prepare_for_live()
 
-		print('LIVE')
+		print('LIVE', flush=True)
 		self.state = State.LIVE
 
 
@@ -203,7 +209,7 @@ class Broker(object):
 		# self._collect_data(start, end, download=download, quick_download=quick_download)
 
 		# Run backtest
-		self.backtester.performBacktest(mode.value, start=start, end=end, spread=spread)
+		return self.backtester.performBacktest(mode.value, start=start, end=end, spread=spread)
 
 
 	def _generate_backtest(self, start, end):
@@ -284,34 +290,32 @@ class Broker(object):
 		# Collect relevant data and connect to live broker
 		end = datetime.datetime.utcnow()
 		print(f'Start: {start}, End: {end}')
-		self._perform_backtest(start, end, quick_download=quick_download)
+		backtest_complete = self._perform_backtest(start, end, quick_download=quick_download)
 
+		if backtest_complete:
+			if self.isUploadBacktest:
 
-		if self.isUploadBacktest:
+				# Update GUI Drawings
+				# for layer in self.backtester.drawings:
+				# 	threading.Thread(
+				# 		target=self.api.userAccount.createDrawings,
+				# 		args=(self.strategyId, layer, self.backtester.drawings[layer])
+				# 	).start()
+				pass
 
-			# Update GUI Drawings
-			# for layer in self.backtester.drawings:
-			# 	threading.Thread(
-			# 		target=self.api.userAccount.createDrawings,
-			# 		args=(self.strategyId, layer, self.backtester.drawings[layer])
-			# 	).start()
-			pass
+			# if self.isClearBacktestPositions:
+			# 	self._clear_backtest_positions()
+
+			# if self.isClearBacktestOrders:
+			# 	self._clear_backtest_orders()
+
+			# if self.isClearBacktestTrades:
+			# 	self._clear_backtest_trades()
 
 		# Clear backtest trades
-		if self.isClearBacktestPositions:
-			self._clear_backtest_positions()
+		self._clear_backtest_trades()
 
-		if self.isClearBacktestOrders:
-			self._clear_backtest_orders()
-
-		if self.isClearBacktestTrades:
-			self._clear_backtest_trades()
-
-		# Update positions/orders
-		# self.updateAllPositions()
-		# self.updateAllOrders()
-
-		# self.state = State.LIVE
+		return backtest_complete
 
 
 	def isBacktest(self):
@@ -329,18 +333,19 @@ class Broker(object):
 	def _collect_data(self, start, end, download=True, quick_download=False):
 		for chart in self.charts:
 			for period in chart.periods:
-				if quick_download:
-					chart.quickDownload(
-						period, 
-						tl.utils.getCountDate(period, 1000, end=start), end
-					)
-				else:
-					chart.getPrices(
-						period, 
-						start=tl.utils.getCountDate(period, 1000, end=start), 
-						end=end,
-						download=download
-					)
+				if period != tl.period.TICK:
+					if quick_download:
+						chart.quickDownload(
+							period, 
+							tl.utils.getCountDate(period, 1000, end=start), end
+						)
+					else:
+						chart.getPrices(
+							period, 
+							start=tl.utils.getCountDate(period, 1000, end=start), 
+							end=end,
+							download=download
+						)
 
 	'''
 	Utilities
@@ -398,9 +403,9 @@ class Broker(object):
 			timestamp = int(item.timestamp)
 
 			if isinstance(item.ask, list):
-				ohlc = np.array([item.ask[3]]*4 + [item.bid[3]]*4, dtype=np.float64)
+				ohlc = np.array([item.ask[3]]*4 + [item.mid[3]]*4 + [item.bid[3]]*4, dtype=np.float64)
 			else:
-				ohlc = np.array([item.ask]*4 + [item.bid]*4, dtype=np.float64)
+				ohlc = np.array([item.ask]*4 + [item.mid]*4 + [item.bid]*4, dtype=np.float64)
 
 			self.backtester.handleOrders(product, timestamp, ohlc)
 			self.backtester.handleStopLoss(product, timestamp, ohlc)
@@ -878,7 +883,6 @@ class Broker(object):
 	'''
 
 	def _download_historical_prices(self, broker, product, period, start, end, count):
-
 		now_time = tl.utils.setTimezone(datetime.datetime.utcnow(), 'UTC')
 		if not end is None:
 			if tl.utils.isOffsetAware(end):
@@ -962,13 +966,16 @@ class Broker(object):
 				data = pd.concat((data, result))
 
 				if count is None:
-					new_last_date = tl.utils.convertTimestampToTime(result.index.values[-1])
-					if new_last_date == last_date or self._is_last_candle_found(period, new_last_date, end, 1):
-						data = data[~data.index.duplicated(keep='first')]
-						data.sort_index(inplace=True)
+					if result is None:
 						break
+					else:
+						new_last_date = tl.utils.convertTimestampToTime(result.index.values[-1])
+						if new_last_date == last_date or self._is_last_candle_found(period, new_last_date, end, 1):
+							data = data[~data.index.duplicated(keep='first')]
+							data.sort_index(inplace=True)
+							break
 
-					last_date = new_last_date
+						last_date = new_last_date
 
 				if not count is None:
 					data = data[~data.index.duplicated(keep='first')]
@@ -1051,11 +1058,12 @@ class Broker(object):
 
 
 	def _stream_ontick(self, item):
-		try:
-			self.getChart(item['product'], broker=item['broker'])._on_tick(item)
-		except Exception as e:
-			print(traceback.format_exc(), flush=True)
-			self.stop()
+		if not self.state == State.STOPPED:
+			try:
+				self.getChart(item['product'], broker=item['broker'])._on_tick(item)
+			except Exception as e:
+				print(traceback.format_exc(), flush=True)
+				self.stop()
 
 
 	'''
@@ -1076,22 +1084,42 @@ class Broker(object):
 
 
 	def _stream_ontrade(self, items):
-		try:
-			print(items, flush=True)
-			for ref_id, item in items.items():
-				print(f'[STREAM ONTRADE]: {ref_id}, {item}')
-				result = self.onTradeHandler(ref_id, item)
+		if not self.state == State.STOPPED:
+			try:
+				print(items, flush=True)
+				for ref_id, item in items.items():
+					print(f'[STREAM ONTRADE]: {ref_id}, {item}', flush=True)
+					result = self.onTradeHandler(ref_id, item)
 
-				# Handle result
-				if len(result):
-					for func in self.ontrade_subs:
-						func(
-							BrokerItem({
-								'reference_id': ref_id,
-								'type': item.get('type'),
-								'item': result
-							})
-						)
+					# Handle result
+					if len(result):
+						for func in self.ontrade_subs:
+							func(
+								BrokerItem({
+									'reference_id': ref_id,
+									'type': item.get('type'),
+									'item': result
+								})
+							)
+			except Exception as e:
+				print(traceback.format_exc(), flush=True)
+				self.stop()
+
+	def _stream_onsessionstatus(self, item):
+		print(f'On Session Status: {item}', flush=True)
+		try:
+			for func in self.onsessionstatus_subs:
+				func(BrokerItem(item))
+
+			if item['type'] == 'disconnected':
+				self.state = State.STOPPED
+				print('DISCONNECTED + STOPPED', flush=True)
+				# self.stop()
+
+			elif item['type'] == 'connected':
+				if self.state == State.STOPPED:
+					return
+
 		except Exception as e:
 			print(traceback.format_exc(), flush=True)
 			self.stop()
@@ -1121,6 +1149,15 @@ class Broker(object):
 	def unsubscribeOnTrade(self, func):
 		if func in self.ontrade_subs:
 			del self.ontrade_subs[self.ontrade_subs.index(func)]
+
+
+	def subscribeOnSessionStatus(self, func):
+		self.onsessionstatus_subs.append(func)
+
+
+	def unsubscribeOnTrade(self, func):
+		if func in self.onsessionstatus_subs:
+			del self.onsessionstatus_subs[self.onsessionstatus_subs.index(func)]
 
 
 	def handlePositionEntry(self, ref_id, item):
@@ -1184,23 +1221,28 @@ class Broker(object):
 		pos = item.get('item')
 		result = None
 
+		print(f'CLOSING: {item}', flush=True)
 		for j in range(len(positions)):
 			match_pos = positions[j]
 			if match_pos.order_id == pos['order_id']:
+				print(f'FOUND', flush=True)
 				pos['lotsize'] = self._convert_incoming_lotsize(pos['lotsize'])
 
 				# Handle partial position close
-				if pos['lotsize'] >= match_pos.lotsize:
+				if pos['lotsize'] < match_pos.lotsize:
+					print('PARTIAL CLOSE', flush=True)
 					cpy = tl.position.Position.fromDict(self, pos)
 					match_pos.lotsize = match_pos.lotsize - cpy.lotsize
 					result = cpy
 				# Handle full position close
 				else:
+					print('FULL CLOSE', flush=True)
 					match_pos.close_price = pos['close_price']
 					match_pos.close_time = pos['close_time']
 					result = match_pos
 					del self.positions[self.positions.index(match_pos)]
 
+				print(self.positions, flush=True)
 				break
 
 		# Add to handled
@@ -1276,6 +1318,7 @@ class Broker(object):
 			or order_type == tl.STOP_LOSS
 			or order_type == tl.TAKE_PROFIT
 		):
+			print('HANDLE POSITION CLOSE', flush=True)
 			result = self.handlePositionClose(ref_id, item)
 
 		# Order Cancel
