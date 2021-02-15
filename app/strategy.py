@@ -35,6 +35,7 @@ class Strategy(object):
 		self.drawing_queue = []
 		self.log_queue = []
 		self.info_queue = []
+		self.transaction_queue = []
 		self.reports = {}
 		self.lastSave = time.time()
 
@@ -197,7 +198,11 @@ class Strategy(object):
 	def draw(self, draw_type, layer, product, value, timestamp, 
 				section_name='instrument', section_props={},
 				color='#000000', scale=1.0, rotation=0, props={}):
-		real_timestamp = self.lastTick.chart._end_timestamp
+		if self.getBroker().state == State.LIVE:
+			real_timestamp = self.lastTick.timestamp + tl.period.getPeriodOffsetSeconds(self.lastTick.period)
+		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
+			real_timestamp = self.lastTick.chart._end_timestamp
+
 		drawing = {
 			'id': self.broker.generateReference(),
 			'product': product,
@@ -223,7 +228,11 @@ class Strategy(object):
 	def text(self, text, layer, product, value, timestamp, 
 				section_name='instrument', section_props={},
 				color='#000000', font_size=10, rotation=0):
-		real_timestamp = self.lastTick.chart._end_timestamp
+		if self.getBroker().state == State.LIVE:
+			real_timestamp = self.lastTick.timestamp + tl.period.getPeriodOffsetSeconds(self.lastTick.period)
+		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
+			real_timestamp = self.lastTick.chart._end_timestamp
+
 		drawing = {
 			'id': self.broker.generateReference(),
 			'product': product,
@@ -254,20 +263,10 @@ class Strategy(object):
 				'item': drawing
 			}
 
-			# Send Gui Socket Message
-			# try:
-			# 	self.app.sio.emit(
-			# 		'ongui', 
-			# 		{'strategy_id': self.strategyId, 'item': item}, 
-			# 		namespace='/admin'
-			# 	)
-			# except Exception:
-			# 	pass
-
 			# Append to message queue
 			self.message_queue.append(item)
 			# Save to drawing queue
-			# self.drawing_queue.append(item)
+			self.transaction_queue.append(item)
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
 			# Handle drawings through backtester
@@ -275,9 +274,10 @@ class Strategy(object):
 
 
 	def clearDrawingLayer(self, layer):
-		timestamp = self.lastTick.chart._end_timestamp
 
 		if self.getBroker().state == State.LIVE or self.getBroker().state == State.IDLE:
+			timestamp = self.lastTick.timestamp + tl.period.getPeriodOffsetSeconds(self.lastTick.period)
+
 			item = {
 				'id': self.broker.generateReference(),
 				'timestamp': timestamp,
@@ -286,30 +286,23 @@ class Strategy(object):
 				'item': layer
 			}
 
-			# Send Gui Socket Message
-			# try:
-			# 	self.app.sio.emit(
-			# 		'ongui', 
-			# 		{'strategy_id': self.strategyId, 'item': item}, 
-			# 		namespace='/admin'
-			# 	)
-			# except Exception:
-			# 	pass
-
 			# Append to message queue
 			self.message_queue.append(item)
 			# Handle to drawing queue
-			# self.drawing_queue.append(item)
+			self.transaction_queue.append(item)
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
+			timestamp = self.lastTick.chart._end_timestamp
+
 			# Handle drawings through backtester
 			self.getBroker().backtester.clearDrawingLayer(timestamp, layer)
 
 
 	def clearAllDrawings(self):
-		timestamp = self.lastTick.chart._end_timestamp
 
 		if self.getBroker().state == State.LIVE or self.getBroker().state == State.IDLE:
+			timestamp = self.lastTick.timestamp + tl.period.getPeriodOffsetSeconds(self.lastTick.period)
+
 			item = {
 				'id': self.broker.generateReference(),
 				'timestamp': timestamp,
@@ -318,22 +311,14 @@ class Strategy(object):
 				'item': None
 			}
 
-			# Send Gui Socket Message
-			# try:
-			# 	self.app.sio.emit(
-			# 		'ongui', 
-			# 		{'strategy_id': self.strategyId, 'item': item}, 
-			# 		namespace='/admin'
-			# 	)
-			# except Exception:
-			# 	pass
-
 			# Append to message queue
 			self.message_queue.append(item)
 			# Handle to drawing queue
-			# self.drawing_queue.append(item)
+			self.transaction_queue.append(item)
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
+			timestamp = self.lastTick.chart._end_timestamp
+
 			# Handle drawings through backtester
 			self.getBroker().backtester.deleteAllDrawings(timestamp)
 
@@ -341,12 +326,12 @@ class Strategy(object):
 	def log(self, *objects, sep=' ', end='\n', file=None, flush=None):
 		# print(*objects, sep=sep, end=end, file=file, flush=True)
 		msg = sep.join(map(str, objects)) + end
-		if self.lastTick is not None:
-			timestamp = self.lastTick.chart._end_timestamp
-		else:
-			timestamp = math.floor(time.time())
+		timestamp = math.floor(time.time())
 
 		if self.getBroker().state == State.LIVE or self.getBroker().state == State.IDLE:
+			if self.lastTick is not None:
+				timestamp = self.lastTick.timestamp + tl.period.getPeriodOffsetSeconds(self.lastTick.period)
+
 			item = {
 				'timestamp': timestamp,
 				'type': tl.CREATE_LOG,
@@ -354,22 +339,15 @@ class Strategy(object):
 				'item': msg
 			}
 
-			# Send Gui Socket Message
-			# try:
-			# 	self.app.sio.emit(
-			# 		'ongui', 
-			# 		{'strategy_id': self.strategyId, 'item': item}, 
-			# 		namespace='/admin'
-			# 	)
-			# except Exception:
-			# 	pass
-
 			# Append to message queue
 			self.message_queue.append(item)
 			# Save to log queue
-			# self.log_queue.append(item)
+			self.transaction_queue.append(item)
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
+			if self.lastTick is not None:
+				timestamp = self.lastTick.chart._end_timestamp
+
 			# Handle logs through backtester
 			self.getBroker().backtester.createLogItem(timestamp, msg)
 
@@ -401,24 +379,23 @@ class Strategy(object):
 				'item': item
 			}
 
-			# Send Gui Socket Message
-			# try:
-			# 	self.app.sio.emit(
-			# 		'ongui', 
-			# 		{'strategy_id': self.strategyId, 'item': item}, 
-			# 		namespace='/admin'
-			# 	)
-			# except Exception:
-			# 	pass
-
 			# Append to message queue
 			self.message_queue.append(item)
 			# Handle to info queue
-			# self.info_queue.append(item)
+			self.info_queue.append(item)
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
+			item = {
+				'product': product,
+				'period': period,
+				'timestamp': timestamp,
+				'type': tl.CREATE_INFO,
+				'account_id': self.getAccountCode(),
+				'item': item
+			}
+
 			# Handle info through backtester
-			self.getBroker().backtester.createInfoItem(product, period, timestamp, item)
+			self.getBroker().backtester.createInfoItem(item)
 
 
 	def createReport(self, name, columns):
@@ -431,7 +408,6 @@ class Strategy(object):
 
 
 	def report(self, name, *data):
-		# return
 		if name in self.reports:
 			self.reports[name].loc[self.reports[name].shape[0]] = list(map(str, data))
 
@@ -441,9 +417,10 @@ class Strategy(object):
 	'''
 
 	def resetGuiQueues(self):
-		self.drawing_queue = []
-		self.log_queue = []
+		self.transaction_queue = []
 		self.info_queue = []
+		# self.drawing_queue = []
+		# self.log_queue = []
 		self.lastSave = time.time()
 
 		# Reset report data
@@ -573,52 +550,36 @@ class Strategy(object):
 			return None
 
 
-	# def saveGui(self):
-	# 	if time.time() - self.lastSave > SAVE_INTERVAL:
-	# 		gui = {}
-
-	# 		if len(self.drawing_queue) > 0:
-	# 			gui = self.handleDrawingsSave(gui)
-
-	# 		if len(self.log_queue) > 0:
-	# 			gui = self.handleLogsSave(gui)
-
-	# 		if len(self.info_queue) > 0:
-	# 			gui = self.handleInfoSave(gui)
-
-	# 		reports_result = self.handleReportsSave()
-	# 		if len(reports_result) > 0:
-	# 			gui['reports'] = reports_result
-
-	# 		if len(gui) > 0:
-	# 			endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
-	# 			payload = json.dumps(gui).encode()
-	# 			res = self.getBroker().upload(endpoint, payload)
-
-	# 			if res.status_code == 200:
-	# 				self.resetGuiQueues()
-
-
 	def saveGui(self):
-		if time.time() - self.lastSave > SAVE_INTERVAL:
-			update = {}
+		update = {}
 
-			if len(self.drawing_queue) > 0:
-				update['drawings'] = self.drawing_queue
+		# if len(self.drawing_queue) > 0:
+		# 	update['drawings'] = self.drawing_queue
 
-			if len(self.log_queue) > 0:
-				update['logs'] = self.log_queue
+		# if len(self.log_queue) > 0:
+		# 	update['logs'] = self.log_queue
 
-			if len(self.info_queue) > 0:
-				update['info'] = self.info_queue
+		if len(self.info_queue) > 0:
+			update['info'] = self.info_queue
 
-			if len(gui) > 0:
-				endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
-				payload = json.dumps(update).encode()
-				res = self.getBroker().upload(endpoint, payload)
+		if len(self.transaction_queue) > 0:
+			update['transactions'] = self.transaction_queue
 
-				if res.status_code == 200:
-					self.resetGuiQueues()
+		reports = {}
+		for name in self.reports:
+			report = self.reports[name]
+			if report.size > 0:
+				reports[name] = report.to_dict()
+		if len(reports) > 0:
+			update['reports'] = reports
+
+		if len(update) > 0:
+			endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
+			payload = json.dumps(update).encode()
+			res = self.getBroker().upload(endpoint, payload)
+
+			if res.status_code == 200:
+				self.resetGuiQueues()
 
 
 	def on_user_input(self, item):
@@ -668,7 +629,9 @@ class Strategy(object):
 		self.handleMessageQueue()
 		# Save GUI
 		if self.getBroker().state == State.LIVE:
-			Thread(target=self.saveGui).start()
+			if time.time() - self.lastSave > SAVE_INTERVAL:
+				self.lastSave = time.time()
+				Thread(target=self.saveGui).start()
 
 	'''
 	Getters

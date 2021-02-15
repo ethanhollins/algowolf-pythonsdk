@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import os
 import time
+import traceback
 from copy import copy
 from datetime import datetime, timedelta
 from threading import Thread
@@ -216,89 +217,99 @@ class Chart(object):
 		
 
 	def _handle_ticks(self):
-		while True:
-			if (
-				self.strategy.getBroker().state == State.LIVE and 
-				len(self.strategy.tick_queue) and 
-				self.strategy.tick_queue[0]['broker'] == self.broker and
-				self.strategy.tick_queue[0]['product'] == self.product
-			):
-				item = self.strategy.tick_queue[0]
+		try:
+			while True:
+				if (
+					self.strategy.getBroker().state == State.LIVE and 
+					len(self.strategy.tick_queue) and 
+					self.strategy.tick_queue[0]['broker'] == self.broker and
+					self.strategy.tick_queue[0]['product'] == self.product
+				):
+					item = self.strategy.tick_queue[0]
 
-				if item['period'] == tl.period.TICK:
-					self.timestamps[item['period']] = item['timestamp']
-					self.asks[item['period']] = item['item']['ask']
-					self.mids[item['period']] = item['item']['mid']
-					self.bids[item['period']] = item['item']['bid']
+					if item['period'] == tl.period.TICK:
+						self.timestamps[item['period']] = item['timestamp']
+						self.asks[item['period']] = item['item']['ask']
+						self.mids[item['period']] = item['item']['mid']
+						self.bids[item['period']] = item['item']['bid']
 
-					tick = BrokerItem({
-						'chart': self, 
-						'timestamp': item['timestamp'],
-						'period': item['period'], 
-						'ask': item['item']['ask'],
-						'mid': item['item']['mid'],
-						'bid': item['item']['bid'],
-						'bar_end': False
-					})
-
-				else:
-					# Update current ask/mid/bid prices
-					ohlc = item['item']['ask'] + item['item']['mid'] + item['item']['bid']
-
-					last_ts = self._data[item['period']].index.values[-1]
-
-					if item['timestamp'] < last_ts - tl.period.getPeriodOffsetSeconds(item['period']):
-						# Skip tick
-						# del self.strategy.tick_queue[queue_idx]
-						del self.strategy.tick_queue[0]
-						return
-
-					elif not item['bar_end'] and item['timestamp'] >= last_ts:
-						new_ts = self.getNewTimestamp(item['period'], item['timestamp'], last_ts)
-						self._idx[item['period']] += 1
-						self._data[item['period']].loc[new_ts] = ohlc
+						tick = BrokerItem({
+							'chart': self, 
+							'timestamp': item['timestamp'],
+							'period': item['period'], 
+							'ask': item['item']['ask'],
+							'mid': item['item']['mid'],
+							'bid': item['item']['bid'],
+							'bar_end': False
+						})
 
 					else:
-						self._data[item['period']].iloc[-1] = ohlc
+						# Update current ask/mid/bid prices
+						ohlc = item['item']['ask'] + item['item']['mid'] + item['item']['bid']
 
-					# Handle Indicators
-					self._handle_indicators(item['period'])
+						last_ts = self._data[item['period']].index.values[-1]
 
-					# Limit Data
-					self._data[item['period']] = self._data[item['period']].iloc[-1000:]
-					self._idx[item['period']] = self._data[item['period']].shape[0]-1
-					self._limit_indicators(item['period'])
+						if item['timestamp'] < last_ts - tl.period.getPeriodOffsetSeconds(item['period']):
+							print(f'SKIP {item["timestamp"]}')
+							# Skip tick
+							# del self.strategy.tick_queue[queue_idx]
+							del self.strategy.tick_queue[0]
+							return
 
-					idx = self._idx[item['period']]
-					self.timestamps[item['period']] = self._data[item['period']].index.values[:idx+1][::-1]
-					self.asks[item['period']] = self._data[item['period']].values[:idx+1,:4][::-1]
-					self.mids[item['period']] = self._data[item['period']].values[:idx+1,4:8][::-1]
-					self.bids[item['period']] = self._data[item['period']].values[:idx+1,8:][::-1]
+						elif not item['bar_end'] and item['timestamp'] >= last_ts:
+							new_ts = self.getNewTimestamp(item['period'], item['timestamp'], last_ts)
+							self._idx[item['period']] += 1
+							self._data[item['period']].loc[new_ts] = ohlc
 
-				# Send to subscribed functions
-				if self.strategy.getBroker().isLive() and item['period'] in self._subscriptions:
-					# self.strategy.getBroker()._check_stoploss(item['product'], round(time.time()), ohlc)
-					# self.strategy.getBroker()._check_takeprofit(item['product'], round(time.time()), ohlc)
+						else:
+							self._data[item['period']].iloc[-1] = ohlc
+						
 
-					tick = BrokerItem({
-						'chart': self, 
-						'timestamp': item['timestamp'],
-						'period': item['period'], 
-						'ask': item['item']['ask'],
-						'mid': item['item']['mid'],
-						'bid': item['item']['bid'],
-						'bar_end': item['bar_end']
-					})
+						# print(f'CALC {item["timestamp"]}')
 
-				self.strategy.setTick(tick)
+						# Handle Indicators
+						self._handle_indicators(item['period'])
 
-				if item['period'] in self._subscriptions:
-					for func in self._subscriptions[item['period']]:
-						func(tick)
+						# Limit Data
+						self._data[item['period']] = self._data[item['period']].iloc[-1000:]
+						self._idx[item['period']] = self._data[item['period']].shape[0]-1
+						self._limit_indicators(item['period'])
 
-				del self.strategy.tick_queue[0]
+						idx = self._idx[item['period']]
+						self.timestamps[item['period']] = self._data[item['period']].index.values[:idx+1][::-1]
+						self.asks[item['period']] = self._data[item['period']].values[:idx+1,:4][::-1]
+						self.mids[item['period']] = self._data[item['period']].values[:idx+1,4:8][::-1]
+						self.bids[item['period']] = self._data[item['period']].values[:idx+1,8:][::-1]
 
-			time.sleep(0.001)
+					# Send to subscribed functions
+					if self.strategy.getBroker().isLive() and item['period'] in self._subscriptions:
+						# self.strategy.getBroker()._check_stoploss(item['product'], round(time.time()), ohlc)
+						# self.strategy.getBroker()._check_takeprofit(item['product'], round(time.time()), ohlc)
+
+						tick = BrokerItem({
+							'chart': self, 
+							'timestamp': item['timestamp'],
+							'period': item['period'], 
+							'ask': item['item']['ask'],
+							'mid': item['item']['mid'],
+							'bid': item['item']['bid'],
+							'bar_end': item['bar_end']
+						})
+
+					self.strategy.setTick(tick)
+
+					if item['period'] in self._subscriptions:
+						for func in self._subscriptions[item['period']]:
+							func(tick)
+
+					del self.strategy.tick_queue[0]
+
+				time.sleep(0.001)
+
+		except Exception:
+			print(traceback.format_exc(), flush=True)
+			print('---STOPPED---', flush=True)
+			self.strategy.getBroker().stop()
 
 
 	def _set_data(self, df, period, append=False):

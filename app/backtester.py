@@ -11,7 +11,7 @@ class Backtester(object):
 	def __init__(self, broker):
 		self.broker = broker
 		self.result = []
-		self.info = {}
+		self.info = []
 
 		self._idx = 0
 
@@ -282,6 +282,8 @@ class Backtester(object):
 					})
 				)
 
+			self.result.append(v)
+
 
 	def createTransactionItem(self, ref_id, timestamp, order_type, prev_item, new_item):
 		item = {
@@ -294,7 +296,7 @@ class Backtester(object):
 			}
 		}
 
-		self.result.append(item)
+		# self.result.append(item)
 
 
 	def createDrawing(self, timestamp, layer, drawing):
@@ -327,16 +329,8 @@ class Backtester(object):
 		self.result.append(item)
 
 
-	def createInfoItem(self, product, period, timestamp, item):
-		timestamp = int(timestamp)
-
-		if product not in self.info:
-			self.info[product] = {}
-		if period not in self.info[product]:
-			self.info[product][period] = {}
-		if not timestamp in self.info[product][period]:
-			self.info[product][period][timestamp] = []
-		self.info[product][period][timestamp].append(item)
+	def createInfoItem(self, item):
+		self.info.append(item)
 
 
 	def createLogItem(self, timestamp, item):
@@ -640,14 +634,14 @@ class Backtester(object):
 					bar_ts.append(next_ts - tl.period.getPeriodOffsetSeconds(period))
 
 					prev_bars_df = chart.quickDownload(
-						period, end=start, count=1000, set_data=False
+						period, end=start, count=2000, set_data=False
 					)
 					print(f'[BT] {period} download complete. {prev_bars_df.shape}', flush=True)
+					
 
 					# Get Completed Bars DataFrame
 					bars_df = df.loc[df.index.intersection(bar_end_ts)]
 					bars_df.index = bar_ts
-
 					bars_df = pd.concat((prev_bars_df, bars_df))
 
 					# Set Artificial Spread
@@ -1265,7 +1259,7 @@ class OandaBacktester(Backtester):
 		res = {}
 		if remaining > 0:
 			pos = tl.BacktestPosition.fromOrder(self.broker, order)
-			pos.order_id = self.broker.generateReference()
+			# pos.order_id = self.broker.generateReference()
 			pos.order_type = order_type
 			pos.lotsize = remaining
 			pos.open_time = self.broker.getTimestamp(order.product)

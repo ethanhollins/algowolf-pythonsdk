@@ -65,8 +65,8 @@ Parent Broker Class
 class Broker(object):
 
 	# __slots__ = (
-	# 	'name', 'controller', 'charts', 'positions', 'closed_positions', 'orders', 
-	# 	'on_tick', 'on_new_bar', 'on_trade', 'on_stop_loss', 'on_take_profit'
+	#   'name', 'controller', 'charts', 'positions', 'closed_positions', 'orders', 
+	#   'on_tick', 'on_new_bar', 'on_trade', 'on_stop_loss', 'on_take_profit'
 	# )
 	def __init__(self, app, strategy, strategy_id=None, broker_id=None, account_id=None, data_path='data/'):
 		self._app = app
@@ -78,7 +78,7 @@ class Broker(object):
 		self.name = None
 		self.state = State.IDLE
 		self.backtester = None
-		self.isUploadBacktest = False
+		self.isUploadBacktest = True
 		self.isClearBacktestPositions = False
 		self.isClearBacktestOrders = False
 		self.isClearBacktestTrades = False
@@ -134,7 +134,7 @@ class Broker(object):
 		if not backtest_complete:
 			end = datetime.datetime.utcnow()
 			# for chart in self.charts:
-			# 	for period in chart.periods:
+			#   for period in chart.periods:
 			# start = tl.utils.getCountDate(period, 1000, end=end)
 			self._collect_data(end, end, download=False, quick_download=True)
 
@@ -153,11 +153,11 @@ class Broker(object):
 		self.state = State.STOPPED
 
 		# for product in self._chart_subs:
-		# 	api_chart = self.api.getChart(product)
-		# 	for period in self._chart_subs[product]:
-		# 		if period in self._chart_subs[api_chart.product]:
-		# 			for sub_id in self._chart_subs[api_chart.product][period]:
-		# 				api_chart.unsubscribe(period, self.brokerId, sub_id)
+		#   api_chart = self.api.getChart(product)
+		#   for period in self._chart_subs[product]:
+		#       if period in self._chart_subs[api_chart.product]:
+		#           for sub_id in self._chart_subs[api_chart.product][period]:
+		#               api_chart.unsubscribe(period, self.brokerId, sub_id)
 		self._app.sio.disconnect()
 
 
@@ -232,6 +232,19 @@ class Broker(object):
 		return result
 
 
+	def _generate_live_backtest(self):
+		result = {
+			'transactions': self.backtester.result,
+			'info': self.backtester.info
+		}
+
+		self.strategy.resetReports()
+		self.backtester.result = []
+		self.backtester.info = []
+
+		return result
+
+
 	def upload(self, endpoint, payload):
 		# Upload Backtest
 		file_name = self.generateReference()
@@ -290,27 +303,27 @@ class Broker(object):
 		# Collect relevant data and connect to live broker
 		end = datetime.datetime.utcnow()
 		print(f'Start: {start}, End: {end}')
-		backtest_complete = self._perform_backtest(start, end, quick_download=quick_download)
+		backtest_complete = self._perform_backtest(start, end, spread=0.0, quick_download=quick_download)
 
 		if backtest_complete:
 			if self.isUploadBacktest:
+				# Upload Backtest
+				endpoint = f'/v1/strategy/{self.strategyId}/{self.brokerId}/{self.accountId}/backtest'
+				payload = json.dumps(self._generate_live_backtest()).encode()
 
-				# Update GUI Drawings
-				# for layer in self.backtester.drawings:
-				# 	threading.Thread(
-				# 		target=self.api.userAccount.createDrawings,
-				# 		args=(self.strategyId, layer, self.backtester.drawings[layer])
-				# 	).start()
-				pass
+				start = time.time()
+				print(f'Uploading live backtest... {len(payload)}')
+				res = self.upload(endpoint, payload)
+				print(f'Live upload done {round(time.time() - start, 2)}s')
 
 			# if self.isClearBacktestPositions:
-			# 	self._clear_backtest_positions()
+			#   self._clear_backtest_positions()
 
 			# if self.isClearBacktestOrders:
-			# 	self._clear_backtest_orders()
+			#   self._clear_backtest_orders()
 
 			# if self.isClearBacktestTrades:
-			# 	self._clear_backtest_trades()
+			#   self._clear_backtest_trades()
 
 		# Clear backtest trades
 		self._clear_backtest_trades()
@@ -380,9 +393,9 @@ class Broker(object):
 
 	def _prepare_for_live(self):
 		# for i in self.positions + self.orders:
-		# 	if not any([chart.isChart(self.name, i.product) for chart in self.charts]):
-		# 		chart = self.getChart(i.product, tl.period.TICK, broker=self.name)
-		# 		chart.connectAll()
+		#   if not any([chart.isChart(self.name, i.product) for chart in self.charts]):
+		#       chart = self.getChart(i.product, tl.period.TICK, broker=self.name)
+		#       chart.connectAll()
 
 		for chart in self.charts:
 			# Setup tick charts for user broker
@@ -472,14 +485,14 @@ class Broker(object):
 				return chart.getLastAskOHLC(period)[3]
 
 		# if self.chartExists(broker, product):
-		# 	chart = self.getChart(product, broker=broker)
-		# 	period = chart.getLowestPeriod()
-		# 	if period is not None:
-		# 		return chart.getLastAskOHLC(period)[3]
-		# 	else:
-		# 		raise tl.error.BrokerException(f'No {product} data found.')
+		#   chart = self.getChart(product, broker=broker)
+		#   period = chart.getLowestPeriod()
+		#   if period is not None:
+		#       return chart.getLastAskOHLC(period)[3]
+		#   else:
+		#       raise tl.error.BrokerException(f'No {product} data found.')
 		# else:
-		# 	raise tl.error.BrokerException(f'Chart {product} doesn\'t exist.')	
+		#   raise tl.error.BrokerException(f'Chart {product} doesn\'t exist.')  
 
 
 	def getBid(self, product):
@@ -492,20 +505,20 @@ class Broker(object):
 				return chart.getLastBidOHLC(period)[3]
 
 		# if self.chartExists(broker, product):
-		# 	chart = self.getChart(product, broker=broker)
-		# 	period = chart.getLowestPeriod()
-		# 	if period is not None:
-		# 		return chart.getLastBidOHLC(period)[3]
-		# 	else:
-		# 		raise tl.error.BrokerException(f'No {product} data found.')
+		#   chart = self.getChart(product, broker=broker)
+		#   period = chart.getLowestPeriod()
+		#   if period is not None:
+		#       return chart.getLastBidOHLC(period)[3]
+		#   else:
+		#       raise tl.error.BrokerException(f'No {product} data found.')
 		# else:
-		# 	raise tl.error.BrokerException(f'Chart {product} doesn\'t exist.')
+		#   raise tl.error.BrokerException(f'Chart {product} doesn\'t exist.')
 
 	def getTimestamp(self, product):
 		if self.state == State.LIVE:
 			return time.time()
 			# if period is None:
-			# 	period = self.getChart(product, broker=broker).getLowestPeriod()
+			#   period = self.getChart(product, broker=broker).getLowestPeriod()
 			# return int(self.getChart(product, broker=broker).getTimestamp(period))
 
 		else:
@@ -916,21 +929,26 @@ class Broker(object):
 				res = self._session.get(
 					self._url + endpoint,
 					params = {
-						'from': last_date.strftime('%Y-%m-%dT%H:%M:%SZ'), 'to': end.strftime('%Y-%m-%dT%H:%M:%SZ'), 'tz': 'UTC'
+						'from': last_date.strftime('%Y-%m-%dT%H:%M:%SZ'), 
+						'to': end.strftime('%Y-%m-%dT%H:%M:%SZ'), 
+						'tz': 'UTC'
 					}
 				)
 			else:
 				if not start is None:
+					print('start', flush=True)
 					t_start = last_date
 					t_end = tl.utils.getCountDate(period, count, start=last_date)
 					last_date = t_end
 
 				elif not end is None:
+					print('end', flush=True)
 					t_end = last_date
 					t_start = tl.utils.getCountDate(period, count, end=last_date)
 					last_date = t_start
 
 				else:
+					print('none', flush=True)
 					t_end = last_date
 					t_start = tl.utils.getCountDate(period, count, end=last_date)
 					last_date = t_start
@@ -971,28 +989,26 @@ class Broker(object):
 					else:
 						new_last_date = tl.utils.convertTimestampToTime(result.index.values[-1])
 						if new_last_date == last_date or self._is_last_candle_found(period, new_last_date, end, 1):
-							data = data[~data.index.duplicated(keep='first')]
-							data.sort_index(inplace=True)
 							break
 
 						last_date = new_last_date
+						print(f'NEXT: {last_date}', flush=True)
 
-				if not count is None:
-					data = data[~data.index.duplicated(keep='first')]
-					data.sort_index(inplace=True)
-
+				else:
 					if not start is None:
 						if data.shape[0] >= count or self._is_last_candle_found(period, last_date, now_time, 1):
-							data = data[:count]
+							data = data.iloc[:count]
 							break
 
 					elif data.shape[0] >= count:
-						data = data[-count:]
+						data = data.iloc[-count:]
 						break
 
 			else:
 				break
 
+		data = data[~data.index.duplicated(keep='first')]
+		data.sort_index(inplace=True)
 		return data
 
 	def _is_last_candle_found(self, period, start_dt, end_dt, count):
@@ -1092,7 +1108,7 @@ class Broker(object):
 					result = self.onTradeHandler(ref_id, item)
 
 					# Handle result
-					if len(result):
+					if result is not None and len(result):
 						for func in self.ontrade_subs:
 							func(
 								BrokerItem({
@@ -1101,6 +1117,9 @@ class Broker(object):
 									'item': result
 								})
 							)
+					else:
+						print(f'IS NONE: {ref_id}, {item}', flush=True)
+
 			except Exception as e:
 				print(traceback.format_exc(), flush=True)
 				self.stop()
