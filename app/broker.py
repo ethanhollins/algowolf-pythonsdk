@@ -159,6 +159,7 @@ class Broker(object):
 		#           for sub_id in self._chart_subs[api_chart.product][period]:
 		#               api_chart.unsubscribe(period, self.brokerId, sub_id)
 		self._app.sio.disconnect()
+		sys.exit()
 
 
 
@@ -1079,6 +1080,7 @@ class Broker(object):
 				self.getChart(item['product'], broker=item['broker'])._on_tick(item)
 			except Exception as e:
 				print(traceback.format_exc(), flush=True)
+				self._app.sendScriptStopped()
 				self.stop()
 
 
@@ -1122,6 +1124,7 @@ class Broker(object):
 
 			except Exception as e:
 				print(traceback.format_exc(), flush=True)
+				self._app.sendScriptStopped()
 				self.stop()
 
 	def _stream_onsessionstatus(self, item):
@@ -1141,6 +1144,7 @@ class Broker(object):
 
 		except Exception as e:
 			print(traceback.format_exc(), flush=True)
+			self._app.sendScriptStopped()
 			self.stop()
 
 

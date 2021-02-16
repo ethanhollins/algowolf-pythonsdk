@@ -93,17 +93,20 @@ class App(object):
 			if 'onStart' in dir(self.module) and callable(self.module.onStart):
 				self.module.onStart()
 
+			self.sendScriptRunning()
+
 		except Exception as e:
 			print(traceback.format_exc(), flush=True)
-			self.sio.disconnect()
+			self.stop()
 			raise e
 
 
 	def stop(self):
 		if self.strategy is not None:
+			self.sendScriptStopped()
 			self.strategy.get('strategy').stop()
-			self.strategy = None
-			self.module = None
+			# self.strategy = None
+			# self.module = None
 
 
 	def backtest(self, auth_key, broker, _from, to, mode, input_variables, spread):
@@ -214,6 +217,57 @@ class App(object):
 
 			if 'onSessionStatus' in dir(self.module) and callable(self.module.onSessionStatus):
 				self.strategy.getBroker().subscribeOnSessionStatus(self.module.onSessionStatus)
+
+
+	def sendScriptRunning(self):
+		try:
+			self.sio.emit(
+				'ongui', 
+				{
+					'strategy_id': self.strategyId, 
+					'item': {
+						'account_code': '.'.join((self.brokerId, self.accountId)),
+						'type': 'script_running',
+					}
+				}, 
+				namespace='/admin'
+			)
+		except Exception:
+			print(traceback.format_exc(), flush=True)
+
+
+	def sendScriptStopped(self):
+		try:
+			self.sio.emit(
+				'ongui', 
+				{
+					'strategy_id': self.strategyId, 
+					'item': {
+						'account_code': '.'.join((self.brokerId, self.accountId)),
+						'type': 'script_stopped',
+					}
+				}, 
+				namespace='/admin'
+			)
+		except Exception:
+			print(traceback.format_exc(), flush=True)
+
+
+	def sendLiveBacktestUploaded(self):
+		try:
+			self.sio.emit(
+				'ongui', 
+				{
+					'strategy_id': self.strategyId, 
+					'item': {
+						'account_code': '.'.join((self.brokerId, self.accountId)),
+						'type': 'live_backtest_uploaded',
+					}
+				}, 
+				namespace='/admin'
+			)
+		except Exception:
+			print(traceback.format_exc(), flush=True)
 
 
 	def getStrategy(self):
