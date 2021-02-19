@@ -82,7 +82,7 @@ class Order(dict):
 			data=json.dumps(payload)
 		)
 
-		result = self
+		result = []
 		status_code = res.status_code
 		if status_code == 200:
 			res = res.json()
@@ -90,7 +90,27 @@ class Order(dict):
 			for ref_id, item in res.items():
 				if item.get('accepted'):
 					func = self._broker._get_trade_handler(item.get('type'))
-					result = self._broker._wait(ref_id, func, (ref_id, item))
+					wait_result = self._broker._wait(ref_id, func, (ref_id, item))
+
+					result.append(
+						EventItem({
+							'reference_id': ref_id,
+							'accepted': True,
+							'type': item.get('type'),
+							'item': wait_result
+						})
+					)
+
+				else:
+					result.append(
+						EventItem({
+							'reference_id': ref_id,
+							'accepted': False,
+							'type': item.get('type'),
+							'message': item.get('message'),
+							'item': item.get('item')
+						})
+					)
 
 		else:
 			print(f'{res.status_code}: {res.text}', flush=True)
@@ -131,6 +151,7 @@ class Order(dict):
 			data=json.dumps(payload)
 		)
 
+		result = []
 		status_code = res.status_code
 		if status_code == 200:
 			res = res.json()
@@ -139,13 +160,31 @@ class Order(dict):
 				if item.get('accepted'):
 					func = self._broker._get_trade_handler(item.get('type'))
 					wait_result = self._broker._wait(ref_id, func, (ref_id, item))
+
+					result.append(
+						EventItem({
+							'reference_id': ref_id,
+							'accepted': True,
+							'type': item.get('type'),
+							'item': wait_result
+						})
+					)
+
 				else:
-					return self
+					result.append(
+						EventItem({
+							'reference_id': ref_id,
+							'accepted': False,
+							'type': item.get('type'),
+							'message': item.get('message'),
+							'item': item.get('item')
+						})
+					)
 					
 		else:
 			print(f'{res.status_code}: {res.text}', flush=True)
 
-		return self
+		return result
 
 
 	def modifyEntry(self, entry_range=None, entry_price=None):
@@ -195,6 +234,7 @@ Imports
 '''
 from .. import app as tl
 from ..app.error import BrokerException
+from .broker import EventItem
 
 
 

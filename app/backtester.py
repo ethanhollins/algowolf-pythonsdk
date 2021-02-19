@@ -65,6 +65,33 @@ class Backtester(object):
 				raise tl.error.OrderException('Take profit price must be lesser than entry price.')
 
 
+	def generateEventItem(self, res):
+		result = []
+		for ref_id, item in res.items():
+			if item.get('accepted'):
+				result.append(
+					EventItem({
+						'reference_id': ref_id,
+						'accepted': True,
+						'type': item.get('type'),
+						'item': item.get('item')
+					})
+				)
+			else:
+				result.append(
+					EventItem({
+						'reference_id': ref_id,
+						'accepted': False,
+						'type': item.get('type'),
+						'message': item.get('message'),
+						'item': item.get('item')
+					})
+				)
+
+		return result
+
+
+
 	def createPosition(self,
 		product, lotsize, direction,
 		account_id, entry_range, entry_price,
@@ -275,13 +302,14 @@ class Backtester(object):
 		for k, v in res.items():
 			for func in self.broker.ontrade_subs:
 				func(
-					BrokerItem({
+					EventItem({
 						'reference_id': k,
 						'type': v.get('type'),
 						'item': v.get('item')
 					})
 				)
 
+			v['item'] = copy(v.get('item'))
 			self.result.append(v)
 
 
@@ -538,6 +566,66 @@ class Backtester(object):
 				self.createTransactionItem(ref_id, timestamp, tl.TAKE_PROFIT, prev_item, copy(pos))
 
 
+	def _construct_bars(self, period, data, smooth=True):
+		''' Construct other period bars from appropriate saved data '''
+		if data.size > 0:
+			first_data_ts = datetime.utcfromtimestamp(data.index.values[0]).replace(
+				hour=0, minute=0, second=0, microsecond=0
+			).timestamp()
+			first_ts = data.index.values[0] - ((data.index.values[0] - first_data_ts) % tl.period.getPeriodOffsetSeconds(period))
+			next_ts = tl.utils.getNextTimestamp(period, first_ts, now=data.index.values[0])
+			data = data.loc[data.index >= first_ts]
+			timestamps = np.zeros((data.shape[0],), dtype=float)
+			result = np.zeros(data.shape, dtype=float)
+
+			idx = 0
+			passed_count = 0
+			for i in range(1, data.shape[0]):
+				# idx = indicies[i]
+				# passed_count = indicies[i] - indicies[i-1]
+				ts = data.index.values[i]
+
+				if ts >= next_ts:
+					timestamps[idx] = next_ts - tl.period.getPeriodOffsetSeconds(period)
+					next_ts = tl.utils.getNextTimestamp(period, next_ts, now=ts)
+
+					if i - passed_count == 0:
+						result[idx] = [
+							data.values[i-passed_count, 0], np.amax(data.values[i-passed_count:i, 1]), 
+							np.amin(data.values[i-passed_count:i, 2]), data.values[i-1, 3],
+							data.values[i-passed_count, 4], np.amax(data.values[i-passed_count:i, 5]), 
+							np.amin(data.values[i-passed_count:i, 6]), data.values[i-1, 7],
+							data.values[i-passed_count, 8], np.amax(data.values[i-passed_count:i, 9]), 
+							np.amin(data.values[i-passed_count:i, 10]), data.values[i-1, 11]
+						]
+					else:
+						result[idx] = [
+							data.values[i-passed_count-1, 3], np.amax(data.values[i-passed_count:i, 1]), 
+							np.amin(data.values[i-passed_count:i, 2]), data.values[i-1, 3],
+							data.values[i-passed_count-1, 7], np.amax(data.values[i-passed_count:i, 5]), 
+							np.amin(data.values[i-passed_count:i, 6]), data.values[i-1, 7],
+							data.values[i-passed_count-1, 11], np.amax(data.values[i-passed_count:i, 9]), 
+							np.amin(data.values[i-passed_count:i, 10]), data.values[i-1, 11]
+						]
+
+					idx += 1
+					passed_count = 0
+				else:
+					passed_count += 1
+
+
+			timestamps = timestamps.iloc[:idx+1]
+			result = result.iloc[:idx+1]
+
+			print(timestamps[:10])
+			print(result[:10])
+			return result
+			
+		else:
+			return data
+
+
+
 	def _process_chart_data(self, charts, start, end, spread=None):
 		periods = []
 		dataframes = []
@@ -633,15 +721,40 @@ class Backtester(object):
 					bar_end_ts.append(ts)
 					bar_ts.append(next_ts - tl.period.getPeriodOffsetSeconds(period))
 
+					# bars_df = self._construct_bars(period, df)
+
 					prev_bars_df = chart.quickDownload(
 						period, end=start, count=2000, set_data=False
 					)
-					print(f'[BT] {period} download complete. {prev_bars_df.shape}', flush=True)
-					
 
-					# Get Completed Bars DataFrame
+					print(f'[BT] {period} download complete. {prev_bars_df.index.values[-1]} {prev_bars_df.shape}', flush=True)
+
+					# # Get Completed Bars DataFrame
 					bars_df = df.loc[df.index.intersection(bar_end_ts)]
 					bars_df.index = bar_ts
+
+					# if period == tl.period.TWO_MINUTES:
+					# 	integrity_data = chart.quickDownload(
+					# 		period, start=start, end=end, set_data=False
+					# 	)
+
+					# 	print(integrity_data.shape)
+					# 	print(integrity_data.values[0])
+					# 	print(integrity_data.index.values[0])
+					# 	print(integrity_data.values[-1])
+					# 	print(integrity_data.index.values[-1])
+					# 	print(bars_df.shape)
+					# 	print(bars_df.index.values[:integrity_data.shape[0]][0])
+					# 	print(bars_df.values[:integrity_data.shape[0]][0])
+					# 	print(bars_df.index.values[:integrity_data.shape[0]][-1])
+					# 	print(bars_df.values[:integrity_data.shape[0]][-1])
+
+					# 	for i in range(integrity_data.shape[0]):
+					# 		if integrity_data.index.values[i] != bars_df.index.values[:integrity_data.shape[0]][i]:
+					# 			print(f'({i}) {integrity_data.index.values[i]} {bars_df.index.index.values[:integrity_data.shape[0]][i]}')
+					# 			break
+
+
 					bars_df = pd.concat((prev_bars_df, bars_df))
 
 					# Set Artificial Spread
@@ -659,6 +772,9 @@ class Backtester(object):
 					
 					bars_start_idx = prev_bars_df.shape[0]
 					print(f'[BT] {period} spread done', flush=True)
+
+					df = df.round(decimals=5)
+					bars_df = bars_df.round(decimals=5)
 
 					# Process Indicators
 					period_indicator_arrays = []
@@ -801,7 +917,7 @@ class Backtester(object):
 					# Call threaded ontick functions
 					if period in chart._subscriptions:
 						for func in chart._subscriptions[period]:
-							tick = BrokerItem({
+							tick = EventItem({
 								'chart': chart, 
 								'timestamp': tick_timestamp,
 								'period': period, 
@@ -873,7 +989,7 @@ class IGBacktester(Backtester):
 		self.handleTransaction(res)
 		self.createTransactionItem(ref_id, result.open_time, tl.MARKET_ENTRY, None, copy(result))
 
-		return result
+		return self.generateEventItem(res)
 
 
 	def createOrder(self,
@@ -900,7 +1016,7 @@ class IGBacktester(Backtester):
 		self.handleTransaction(res)
 		self.createTransactionItem(ref_id, result.open_time, result.order_type, None, copy(result))
 
-		return result
+		return self.generateEventItem(res)
 
 
 	def modifyPosition(self, pos, sl_range, tp_range, sl_price, tp_price):
@@ -924,7 +1040,7 @@ class IGBacktester(Backtester):
 		self.handleTransaction(res)
 		self.createTransactionItem(ref_id, timestamp, tl.MODIFY, prev_item, copy(result))
 
-		return result
+		return self.generateEventItem(res)
 
 
 	def deletePosition(self, pos, lotsize):
@@ -945,7 +1061,7 @@ class IGBacktester(Backtester):
 		self.handleTransaction(res)
 		self.createTransactionItem(ref_id, result.close_time, tl.POSITION_CLOSE, prev_item, copy(result))
 
-		return result
+		return self.generateEventItem(res)
 
 
 	def modifyOrder(self, order, lotsize, entry_range, entry_price, sl_range, tp_range, sl_price, tp_price):
@@ -969,7 +1085,7 @@ class IGBacktester(Backtester):
 		self.handleTransaction(res)
 		self.createTransactionItem(ref_id, timestamp, tl.MODIFY, prev_item, copy(result))
 
-		return result
+		return self.generateEventItem(res)
 
 
 	def deleteOrder(self, order):
@@ -990,7 +1106,7 @@ class IGBacktester(Backtester):
 		self.handleTransaction(res)
 		self.createTransactionItem(ref_id, result.close_time, tl.ORDER_CANCEL, prev_item, copy(result))
 
-		return result
+		return self.generateEventItem(res)
 
 
 
@@ -1085,7 +1201,7 @@ class OandaBacktester(Backtester):
 			self.handleTransaction(res)
 			self.createTransactionItem(ref_id, result.open_time, tl.MARKET_ENTRY, None, copy(result))
 
-		return result
+		return self.generateEventItem(res)
 
 
 	def createOrder(self,
@@ -1111,7 +1227,7 @@ class OandaBacktester(Backtester):
 		self.handleTransaction(res)
 		self.createTransactionItem(ref_id, result.open_time, result.order_type, None, copy(result))
 
-		return result
+		return self.generateEventItem(res)
 
 
 	def modifyPosition(self, pos, sl_range, tp_range, sl_price, tp_price):
@@ -1154,7 +1270,7 @@ class OandaBacktester(Backtester):
 			tl.MODIFY, prev_item, copy(result)
 		)
 
-		return result
+		return self.generateEventItem(res)
 
 
 	def deletePosition(self, pos, lotsize):
@@ -1175,7 +1291,7 @@ class OandaBacktester(Backtester):
 		self.handleTransaction(res)
 		self.createTransactionItem(ref_id, result.close_time, tl.POSITION_CLOSE, prev_item, copy(result))
 
-		return result
+		return self.generateEventItem(res)
 
 
 	def modifyOrder(self, order, lotsize, entry_range, entry_price, sl_range, tp_range, sl_price, tp_price):
@@ -1222,7 +1338,7 @@ class OandaBacktester(Backtester):
 		self.createTransactionItem(cancel_ref_id, timestamp, tl.ORDER_CANCEL, prev_item, order)
 		self.createTransactionItem(create_ref_id, timestamp, result.order_type, None, copy(result))
 
-		return result
+		return self.generateEventItem(res)
 
 
 	def deleteOrder(self, order):
@@ -1243,7 +1359,7 @@ class OandaBacktester(Backtester):
 		self.handleTransaction(res)
 		self.createTransactionItem(ref_id, result.close_time, tl.ORDER_CANCEL, prev_item, copy(result))
 
-		return result
+		return self.generateEventItem(res)
 
 
 	def createOrderPosition(self, order):
@@ -1282,4 +1398,4 @@ class OandaBacktester(Backtester):
 Imports
 '''
 from .. import app as tl
-from .broker import BrokerItem
+from .broker import EventItem

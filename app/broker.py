@@ -50,13 +50,16 @@ class BacktestMode(Enum):
 	STEP = 'step'
 
 
-class BrokerItem(dict):
+class EventItem(dict):
 
 	def __getattr__(self, key):
 		return self[key]
 
 	def __setattr__(self, key, value):
 		self[key] = value
+
+	def __str__(self):
+		return json.dumps(self, indent=2)
 
 
 '''
@@ -90,6 +93,7 @@ class Broker(object):
 		self.positions = []
 		self.orders = []
 		self.ontrade_subs = []
+		self.onrejected_subs = []
 		self.onsessionstatus_subs = []
 		self.handled = {}
 
@@ -660,19 +664,19 @@ class Broker(object):
 		if not self.isLive():
 			if order_type == tl.MARKET_ORDER:
 				for account_id in accounts:
-					result.append(self.backtester.createPosition(
+					result = self.backtester.createPosition(
 						product, lotsize, tl.LONG,
 						account_id, entry_range, entry_price,
 						sl_range, tp_range, sl_price, tp_price
-					))
+					)
 
 			elif order_type == tl.LIMIT_ORDER or order_type == tl.STOP_ORDER:
 				for account_id in accounts:
-					result.append(self.backtester.createOrder(
+					result = self.backtester.createOrder(
 						product, lotsize, tl.LONG, account_id,
 						order_type, entry_range, entry_price,
 						sl_range, tp_range, sl_price, tp_price
-					))
+					)
 
 			else:
 				raise tl.error.BrokerException('Unrecognisable order type specified.')
@@ -702,8 +706,25 @@ class Broker(object):
 				if item.get('accepted'):
 					func = self._get_trade_handler(item.get('type'))
 					wait_result = self._wait(ref_id, func, (ref_id, item))
-					if wait_result not in result:
-						result.append(wait_result)
+					
+					result.append(
+						EventItem({
+							'reference_id': ref_id,
+							'accepted': True,
+							'type': item.get('type'),
+							'item': wait_result
+						})
+					)
+				else:
+					result.append(
+						EventItem({
+							'reference_id': ref_id,
+							'accepted': False,
+							'type': item.get('type'),
+							'message': item.get('message'),
+							'item': item.get('item')
+						})
+					)
 
 		return result
 
@@ -723,19 +744,19 @@ class Broker(object):
 		if not self.isLive():
 			if order_type == tl.MARKET_ORDER:
 				for account_id in accounts:
-					result.append(self.backtester.createPosition(
+					result = self.backtester.createPosition(
 						product, lotsize, tl.SHORT,
 						account_id, entry_range, entry_price,
 						sl_range, tp_range, sl_price, tp_price
-					))
+					)
 
 			elif order_type == tl.LIMIT_ORDER or order_type == tl.STOP_ORDER:
 				for account_id in accounts:
-					result.append(self.backtester.createOrder(
+					result = self.backtester.createOrder(
 						product, lotsize, tl.SHORT, account_id,
 						order_type, entry_range, entry_price,
 						sl_range, tp_range, sl_price, tp_price
-					))
+					)
 
 			else:
 				raise tl.error.BrokerException('Unrecognisable order type specified.')
@@ -765,8 +786,25 @@ class Broker(object):
 				if item.get('accepted'):
 					func = self._get_trade_handler(item.get('type'))
 					wait_result = self._wait(ref_id, func, (ref_id, item))
-					if wait_result not in result:
-						result.append(wait_result)
+					
+					result.append(
+						EventItem({
+							'reference_id': ref_id,
+							'accepted': True,
+							'type': item.get('type'),
+							'item': wait_result
+						})
+					)
+				else:
+					result.append(
+						EventItem({
+							'reference_id': ref_id,
+							'accepted': False,
+							'type': item.get('type'),
+							'message': item.get('message'),
+							'item': item.get('item')
+						})
+					)
 
 		return result
 
@@ -874,8 +912,7 @@ class Broker(object):
 
 		result = []
 		for pos in positions:
-			pos.close()
-			result.append(pos)
+			result.append(pos.close())
 		
 		return result
 
@@ -887,8 +924,7 @@ class Broker(object):
 
 		result = []
 		for order in orders:
-			order.cancel()
-			result.append(order)
+			result.append(order.cancel())
 
 		return result
 
@@ -1106,21 +1142,33 @@ class Broker(object):
 			try:
 				print(items, flush=True)
 				for ref_id, item in items.items():
-					print(f'[STREAM ONTRADE]: {ref_id}, {item}', flush=True)
-					result = self.onTradeHandler(ref_id, item)
+					if item.get('accepted'):
+						result = self.onTradeHandler(ref_id, item)
 
-					# Handle result
-					if result is not None and len(result):
-						for func in self.ontrade_subs:
+						# Handle result
+						if result is not None and len(result):
+							for func in self.ontrade_subs:
+								func(
+									EventItem({
+										'reference_id': ref_id,
+										'accepted': True,
+										'type': item.get('type'),
+										'item': result
+									})
+								)
+
+					else:
+						for func in self.onrejected_subs:
 							func(
-								BrokerItem({
+								EventItem({
 									'reference_id': ref_id,
+									'accepted': False,
 									'type': item.get('type'),
-									'item': result
+									'message': item.get('message'),
+									'item': item.get('item')
 								})
 							)
-					else:
-						print(f'IS NONE: {ref_id}, {item}', flush=True)
+
 
 			except Exception as e:
 				print(traceback.format_exc(), flush=True)
@@ -1131,7 +1179,7 @@ class Broker(object):
 		print(f'On Session Status: {item}', flush=True)
 		try:
 			for func in self.onsessionstatus_subs:
-				func(BrokerItem(item))
+				func(EventItem(item))
 
 			if item['type'] == 'disconnected':
 				self.state = State.STOPPED
@@ -1172,6 +1220,15 @@ class Broker(object):
 	def unsubscribeOnTrade(self, func):
 		if func in self.ontrade_subs:
 			del self.ontrade_subs[self.ontrade_subs.index(func)]
+
+
+	def subscribeOnRejected(self, func):
+		self.onrejected_subs.append(func)
+
+
+	def unsubscribeOnRejected(self, func):
+		if func in self.onrejected_subs:
+			del self.onrejected_subs[self.onrejected_subs.index(func)]
 
 
 	def subscribeOnSessionStatus(self, func):

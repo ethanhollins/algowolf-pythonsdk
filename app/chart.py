@@ -233,7 +233,7 @@ class Chart(object):
 						self.mids[item['period']] = item['item']['mid']
 						self.bids[item['period']] = item['item']['bid']
 
-						tick = BrokerItem({
+						tick = EventItem({
 							'chart': self, 
 							'timestamp': item['timestamp'],
 							'period': item['period'], 
@@ -286,7 +286,7 @@ class Chart(object):
 						# self.strategy.getBroker()._check_stoploss(item['product'], round(time.time()), ohlc)
 						# self.strategy.getBroker()._check_takeprofit(item['product'], round(time.time()), ohlc)
 
-						tick = BrokerItem({
+						tick = EventItem({
 							'chart': self, 
 							'timestamp': item['timestamp'],
 							'period': item['period'], 
@@ -600,7 +600,7 @@ Imports
 '''
 
 from .. import app as tl
-from .broker import State, BrokerItem
+from .broker import State, EventItem
 from .error import TradelibException
 
 

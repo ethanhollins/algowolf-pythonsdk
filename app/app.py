@@ -210,6 +210,9 @@ class App(object):
 			if 'onTrade' in dir(self.module) and callable(self.module.onTrade):
 				self.strategy.getBroker().subscribeOnTrade(self.module.onTrade)
 
+			if 'onRejected' in dir(self.module) and callable(self.module.onRejected):
+				self.strategy.getBroker().subscribeOnRejected(self.module.onRejected)	
+
 			if 'onTick' in dir(self.module) and callable(self.module.onTick):
 				for chart in self.strategy.getBroker().getAllCharts():
 					for period in chart.periods:

@@ -4,6 +4,7 @@ import json
 import requests
 
 
+
 class Position(dict):
 
 	def __init__(self, broker, order_id, account_id, product, order_type, direction, lotsize, entry_price=None, sl=None, tp=None, open_time=None):
@@ -113,15 +114,36 @@ class Position(dict):
 			data=json.dumps(payload)
 		)
 
+		result = []
 		status_code = res.status_code
 		if status_code == 200:
 			res = res.json()
 		
-			result = self
 			for ref_id, item in res.items():
 				if item.get('accepted'):
 					func = self._broker._get_trade_handler(item.get('type'))
-					result = self._broker._wait(ref_id, func, (ref_id, item))
+					wait_result = self._broker._wait(ref_id, func, (ref_id, item))
+
+					result.append(
+						EventItem({
+							'reference_id': ref_id,
+							'accepted': True,
+							'type': item.get('type'),
+							'item': wait_result
+						})
+					)
+
+				else:
+					result.append(
+						EventItem({
+							'reference_id': ref_id,
+							'accepted': False,
+							'type': item.get('type'),
+							'message': item.get('message'),
+							'item': item.get('item')
+						})
+					)
+
 					
 		else:
 			print(f'{res.status_code}: {res.text}', flush=True)
@@ -150,6 +172,7 @@ class Position(dict):
 			data=json.dumps(payload)
 		)
 
+		result = []
 		status_code = res.status_code
 		if status_code == 200:
 			res = res.json()
@@ -159,10 +182,30 @@ class Position(dict):
 					func = self._broker._get_trade_handler(item.get('type'))
 					wait_result = self._broker._wait(ref_id, func, (ref_id, item))
 
+					result.append(
+						EventItem({
+							'reference_id': ref_id,
+							'accepted': True,
+							'type': item.get('type'),
+							'item': wait_result
+						})
+					)
+
+				else:
+					result.append(
+						EventItem({
+							'reference_id': ref_id,
+							'accepted': False,
+							'type': item.get('type'),
+							'message': item.get('message'),
+							'item': item.get('item')
+						})
+					)
+
 		else:
 			print(f'{res.status_code}: {res.text}', flush=True)
 
-		return self
+		return result
 	
 
 	def modifySL(self, sl_range=None, sl_price=None):
@@ -219,6 +262,7 @@ Imports
 '''
 from .. import app as tl
 from ..app.error import BrokerException
+from .broker import EventItem
 
 
 
