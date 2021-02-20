@@ -1018,6 +1018,7 @@ class Broker(object):
 				else:
 					result = None
 
+				print(result.shape, flush=True)
 				data = pd.concat((data, result))
 
 				if count is None:
@@ -1032,6 +1033,7 @@ class Broker(object):
 						print(f'NEXT: {last_date}', flush=True)
 
 				else:
+					print(data.shape, flush=True)
 					if not start is None:
 						if data.shape[0] >= count or self._is_last_candle_found(period, last_date, now_time, 1):
 							data = data.iloc[:count]
