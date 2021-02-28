@@ -520,10 +520,11 @@ class Chart(object):
 	def getLowestPeriod(self):
 		min_period = None
 		for period in self.periods:
-			period_off = tl.period.getPeriodOffsetSeconds(period)
-			if (not min_period or 
-					period_off < tl.period.getPeriodOffsetSeconds(min_period)):
-				min_period = period
+			if period != tl.period.TICK:
+				period_off = tl.period.getPeriodOffsetSeconds(period)
+				if (not min_period or 
+						period_off < tl.period.getPeriodOffsetSeconds(min_period)):
+					min_period = period
 		return min_period
 
 

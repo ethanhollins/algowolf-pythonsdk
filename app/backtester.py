@@ -568,7 +568,7 @@ class Backtester(object):
 
 	def _construct_bars(self, period, data, smooth=True):
 		''' Construct other period bars from appropriate saved data '''
-		if data.size > 0:
+		if data.size > 0 and period != tl.period.ONE_MINUTE:
 			first_data_ts = datetime.utcfromtimestamp(data.index.values[0]).replace(
 				hour=0, minute=0, second=0, microsecond=0
 			).timestamp()
@@ -579,11 +579,14 @@ class Backtester(object):
 			result = np.zeros(data.shape, dtype=float)
 
 			idx = 0
-			passed_count = 0
-			for i in range(1, data.shape[0]):
+			passed_count = 1
+			for i in range(1, data.shape[0]+1):
 				# idx = indicies[i]
 				# passed_count = indicies[i] - indicies[i-1]
-				ts = data.index.values[i]
+				if i == data.shape[0]:
+					ts = data.index.values[i-1] + tl.period.getPeriodOffsetSeconds(period)
+				else:
+					ts = data.index.values[i]
 
 				if ts >= next_ts:
 					timestamps[idx] = next_ts - tl.period.getPeriodOffsetSeconds(period)
@@ -609,20 +612,27 @@ class Backtester(object):
 						]
 
 					idx += 1
-					passed_count = 0
+					passed_count = 1
 				else:
 					passed_count += 1
 
 
-			timestamps = timestamps.iloc[:idx+1]
-			result = result.iloc[:idx+1]
+			timestamps = timestamps[:idx]
+			result = result[:idx]
 
-			print(timestamps[:10])
-			print(result[:10])
-			return result
-			
+			return pd.DataFrame(
+				index=pd.Index(data=timestamps, name='timestamp'),
+				data=result, 
+				columns=[ 
+					'ask_open', 'ask_high', 'ask_low', 'ask_close',
+					'mid_open', 'mid_high', 'mid_low', 'mid_close',
+					'bid_open', 'bid_high', 'bid_low', 'bid_close'
+				]
+			)
+
 		else:
 			return data
+
 
 
 
@@ -721,7 +731,7 @@ class Backtester(object):
 					bar_end_ts.append(ts)
 					bar_ts.append(next_ts - tl.period.getPeriodOffsetSeconds(period))
 
-					# bars_df = self._construct_bars(period, df)
+					# test_bars_df = self._construct_bars(period, df)
 
 					prev_bars_df = chart.quickDownload(
 						period, end=start, count=2000, set_data=False
@@ -749,10 +759,13 @@ class Backtester(object):
 					# 	print(bars_df.index.values[:integrity_data.shape[0]][-1])
 					# 	print(bars_df.values[:integrity_data.shape[0]][-1])
 
-					# 	for i in range(integrity_data.shape[0]):
-					# 		if integrity_data.index.values[i] != bars_df.index.values[:integrity_data.shape[0]][i]:
-					# 			print(f'({i}) {integrity_data.index.values[i]} {bars_df.index.index.values[:integrity_data.shape[0]][i]}')
+					# 	for x in range(integrity_data.shape[0]):
+					# 		if integrity_data.index.values[x] != bars_df.index.values[:integrity_data.shape[0]][x]:
+					# 			print(f'({x}) {integrity_data.index.values[x]} {bars_df.index.index.values[:integrity_data.shape[0]][x]}')
 					# 			break
+					# 		elif not np.all(integrity_data.values[x] == bars_df.values[:integrity_data.shape[0]][x]):
+					# 			print(f'({x}) {integrity_data.values[x]} {bars_df.values[:integrity_data.shape[0]][x]}')
+
 
 
 					bars_df = pd.concat((prev_bars_df, bars_df))
@@ -864,6 +877,10 @@ class Backtester(object):
 				# For Each Period
 				for z in range(len(periods[y])):
 					# Set index of current chart period
+					# if x == all_ts.size:
+					# 	timestamp = all_ts[x-1]
+					# 	idx -= 1
+					# else:
 					timestamp = all_ts[x]
 					tick_timestamp = timestamp
 					chart = charts[y]
@@ -872,16 +889,18 @@ class Backtester(object):
 					bar_end = False
 
 					period_data = chart._data[period]
+
 					if (
-						idx+1 < period_data.shape[0] and
-						x+1 < all_ts.shape[0] and
-						all_ts[x+1] >= period_data.index.values[idx+1]
+						(x+1 < all_ts.shape[0] and idx+1 < period_data.shape[0] and all_ts[x+1] >= period_data.index.values[idx+1]) or
+						(idx+1 == period_data.shape[0] and 
+							all_ts[x] + tl.period.getPeriodOffsetSeconds(tl.period.ONE_MINUTE) >= period_data.index.values[idx] + tl.period.getPeriodOffsetSeconds(period))
 					):
 						bar_end = True
 						tick_timestamp = period_data.index.values[idx]
 
 					df = dataframes[y][z]
 					period_data.iloc[idx] = df.iloc[x]
+
 					chart.timestamps[period] = period_data.index.values[:idx+1][::-1]
 
 					c_data = period_data.values[:idx+1]

@@ -1015,10 +1015,10 @@ class Broker(object):
 						],
 						data=np.concatenate((result['ohlc']['asks'], result['ohlc']['mids'], result['ohlc']['bids']), axis=1)
 					)
+					print(result.shape, flush=True)
 				else:
 					result = None
 
-				print(result.shape, flush=True)
 				data = pd.concat((data, result))
 
 				if count is None:
