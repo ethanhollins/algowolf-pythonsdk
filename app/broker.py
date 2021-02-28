@@ -373,7 +373,7 @@ class Broker(object):
 
 	def setName(self, name):
 		self.name = name
-		if self.name in (OANDA_NAME, FXCM_NAME, SPOTWARE_NAME):
+		if self.name in (OANDA_NAME, FXCM_NAME, SPOTWARE_NAME, PAPERTRADER_NAME):
 			self.backtester = tl.OandaBacktester(self)
 		elif self.name in (IG_NAME):
 			self.backtester = tl.IGBacktester(self)
