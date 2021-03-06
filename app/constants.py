@@ -49,3 +49,9 @@ TEXT = 'text'
 GLOBAL = 'global'
 LOCAL = 'local'
 
+
+'''
+Other
+'''
+
+BUFFER_COUNT = 2000

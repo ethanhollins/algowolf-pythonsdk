@@ -9,9 +9,12 @@ import json
 import asyncio
 import threading
 import sys
+import os
+import signal
 import shortuuid
 import traceback
 import math
+import ntplib
 from copy import copy
 from enum import Enum
 from .. import app as tl
@@ -97,6 +100,8 @@ class Broker(object):
 		self.onsessionstatus_subs = []
 		self.handled = {}
 
+		self._set_time_off()
+
 		self._session = requests.Session()
 		self._session.headers.update({
 			'Authorization': 'Bearer '+self._app.key,
@@ -110,6 +115,14 @@ class Broker(object):
 	Run Utilities
 		- Functions that start backtest or live runs
 	'''
+
+	def _set_time_off(self):
+		try:
+			client = ntplib.NTPClient()
+			response = client.request('pool.ntp.org')
+			self.time_off = response.tx_time - time.time()
+		except Exception:
+			pass
 
 	# TODO: DO TOKENS INSTEAD and VALIDATION
 	def run(self):
@@ -148,6 +161,7 @@ class Broker(object):
 
 		self._prepare_for_live()
 
+
 		print('LIVE', flush=True)
 		self.state = State.LIVE
 
@@ -163,8 +177,9 @@ class Broker(object):
 		#           for sub_id in self._chart_subs[api_chart.product][period]:
 		#               api_chart.unsubscribe(period, self.brokerId, sub_id)
 		self._app.sio.disconnect()
-		sys.exit()
-
+		
+		PID = os.getpid()
+		os.kill(PID, signal.SIGTERM)
 
 
 	def startFrom(self, dt):
@@ -306,7 +321,7 @@ class Broker(object):
 	def _backtest_and_run(self, start, quick_download=False):
 		self.state = State.BACKTEST_AND_RUN
 		# Collect relevant data and connect to live broker
-		end = datetime.datetime.utcnow()
+		end = tl.convertTimestampToTime(time.time() + self.time_off)
 		print(f'Start: {start}, End: {end}')
 		backtest_complete = self._perform_backtest(start, end, spread=0.0, quick_download=quick_download)
 
@@ -320,15 +335,6 @@ class Broker(object):
 				print(f'Uploading live backtest... {len(payload)}')
 				res = self.upload(endpoint, payload)
 				print(f'Live upload done {round(time.time() - start, 2)}s')
-
-			# if self.isClearBacktestPositions:
-			#   self._clear_backtest_positions()
-
-			# if self.isClearBacktestOrders:
-			#   self._clear_backtest_orders()
-
-			# if self.isClearBacktestTrades:
-			#   self._clear_backtest_trades()
 
 		# Clear backtest trades
 		self._clear_backtest_trades()
@@ -401,15 +407,19 @@ class Broker(object):
 		#   if not any([chart.isChart(self.name, i.product) for chart in self.charts]):
 		#       chart = self.getChart(i.product, tl.period.TICK, broker=self.name)
 		#       chart.connectAll()
+		if self.name == PAPERTRADER_NAME:
+			name = FXCM_NAME
+		else:
+			name = self.name
 
 		for chart in self.charts:
 			# Setup tick charts for user broker
-			if not any([chart.isChart(self.name, chart.product) for chart in self.charts]):
-				chart = self.getChart(chart.product, tl.period.TICK, broker=self.name)
+			if not any([chart.isChart(name, chart.product) for chart in self.charts]):
+				chart = self.getChart(chart.product, tl.period.TICK, broker=name)
 				chart.connectAll()
 
 			chart.prepareLive()
-			if chart.broker == self.name:
+			if chart.broker == name:
 				period = chart.getLowestPeriod()
 				if period is not None:
 					chart.subscribe(period, self._handle_tick_checks)
@@ -1036,18 +1046,20 @@ class Broker(object):
 					print(data.shape, flush=True)
 					if not start is None:
 						if data.shape[0] >= count or self._is_last_candle_found(period, last_date, now_time, 1):
+							data.sort_index(inplace=True)
 							data = data.iloc[:count]
 							break
 
 					elif data.shape[0] >= count:
+						data.sort_index(inplace=True)
 						data = data.iloc[-count:]
 						break
 
 			else:
 				break
 
-		data = data[~data.index.duplicated(keep='first')]
 		data.sort_index(inplace=True)
+		data = data[~data.index.duplicated(keep='first')]
 		return data
 
 	def _is_last_candle_found(self, period, start_dt, end_dt, count):

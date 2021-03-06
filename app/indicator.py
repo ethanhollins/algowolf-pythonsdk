@@ -60,9 +60,9 @@ class Indicator(object):
 
 
 	def limit(self):
-		self._asks = self._asks[-1000:]
-		self._mids = self._mids[-1000:]
-		self._bids = self._bids[-1000:]
+		self._asks = self._asks[-tl.BUFFER_COUNT:]
+		self._mids = self._mids[-tl.BUFFER_COUNT:]
+		self._bids = self._bids[-tl.BUFFER_COUNT:]
 		self.idx = self._asks.shape[0]-1
 
 		self.asks = RoundedArray(self._asks[:self.idx+1][::-1], self.precision)
@@ -101,8 +101,12 @@ class Indicator(object):
 			if isinstance(self._mids, type(None)):
 				self._mids = np.array(new_mid, dtype=float)
 			elif i < self._mids.shape[0]:
+				# if self.period == tl.period.TWO_MINUTES:
+				# 	print(f'REPLACE {self.name}, {idx}, {new_mid}, {self._mids.shape}', flush=True)
 				self._mids[i] = new_mid[0]
 			else:
+				# if self.period == tl.period.TWO_MINUTES:
+				# 	print(f'ADD NEW {self.name}, {idx}, {new_mid}, {self._mids.shape}', flush=True)
 				self._mids = np.concatenate((self._mids, new_mid))
 
 		# Calculate bid prices
@@ -153,8 +157,6 @@ class BOLL(Indicator):
 		# Check min period met
 		if ohlc.shape[0] < period:
 			return [np.nan]*2
-
-		# print(ohlc)
 
 		# Perform calculation
 		mean = np.sum(ohlc[:,3]) / ohlc.shape[0]

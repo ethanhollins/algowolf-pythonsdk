@@ -3,7 +3,7 @@ import math
 import numpy as np
 import pandas as pd
 from copy import copy
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 class Backtester(object):
@@ -634,13 +634,12 @@ class Backtester(object):
 			return data
 
 
-
-
 	def _process_chart_data(self, charts, start, end, spread=None):
 		periods = []
 		dataframes = []
 		indicator_dataframes = []
 		all_ts = []
+		offsets = []
 		tick_df = None
 
 		start_time = time.time()
@@ -650,6 +649,7 @@ class Backtester(object):
 			periods.append([])
 			dataframes.append([])
 			indicator_dataframes.append([])
+			offsets.append([])
 
 			chart = charts[i]
 			# sorted_periods = sorted(chart.periods, key=lambda x: tl.period.getPeriodOffsetSeconds(x))
@@ -662,17 +662,19 @@ class Backtester(object):
 				tl.period.ONE_MINUTE, 
 				start, end, set_data=False
 			)
+
+			all_ts = data.index.values
 			tick_df = data.copy()
 
-			# Set Tick Artificial Spread
-			if isinstance(spread, float):
-				half_spread = tl.utils.convertToPrice(spread / 2)
-				# Ask
-				tick_df.values[:, :4] = tick_df.values[:, 4:8] + half_spread
-				# Bid
-				tick_df.values[:, 8:] = tick_df.values[:, 4:8] - half_spread
-
 			if data.size > 0:
+				# Set Tick Artificial Spread
+				if isinstance(spread, float):
+					half_spread = tl.utils.convertToPrice(spread / 2)
+					# Ask
+					tick_df.values[:, :4] = tick_df.values[:, 4:8] + half_spread
+					# Bid
+					tick_df.values[:, 8:] = tick_df.values[:, 4:8] - half_spread
+
 				first_data_ts = datetime.utcfromtimestamp(data.index.values[0]).replace(
 					hour=0, minute=0, second=0, microsecond=0
 				).timestamp()
@@ -728,25 +730,40 @@ class Backtester(object):
 
 						df.iloc[x] = curr
 
+					# if ts + tl.period.getPeriodOffsetSeconds(tl.period.ONE_MINUTE) >= next_ts:
 					bar_end_ts.append(ts)
 					bar_ts.append(next_ts - tl.period.getPeriodOffsetSeconds(period))
 
+					df = df.iloc[df_off:]
 					# test_bars_df = self._construct_bars(period, df)
 
 					prev_bars_df = chart.quickDownload(
-						period, end=start, count=2000, set_data=False
+						period, end=tl.convertTimestampToTime(df.index.values[0]), 
+						count=2000, set_data=False
 					)
 
-					print(f'[BT] {period} download complete. {prev_bars_df.index.values[-1]} {prev_bars_df.shape}', flush=True)
 
 					# # Get Completed Bars DataFrame
 					bars_df = df.loc[df.index.intersection(bar_end_ts)]
+					bar_end_ts = bar_end_ts[-bars_df.shape[0]:]
+					bar_ts = bar_ts[-bars_df.shape[0]:]
 					bars_df.index = bar_ts
+					
+					prev_bars_df = prev_bars_df.loc[prev_bars_df.index < bars_df.index.values[0]]
+
+					print(f'PREV: {prev_bars_df.index.values[-1]}', flush=True)
+					print(f'BARS: {bars_df.index.values[0]}, {bars_df.shape}', flush=True)
+					print(f'LATEST DF: {df.index.values[-1]}', flush=True)
+					print(f'LATEST: {bars_df.index.values[-1]}', flush=True)
+
+					print(f'[BT] {period} download complete. {prev_bars_df.index.values[-1]} {prev_bars_df.shape}', flush=True)
 
 					# if period == tl.period.TWO_MINUTES:
 					# 	integrity_data = chart.quickDownload(
 					# 		period, start=start, end=end, set_data=False
 					# 	)
+
+					# 	integrity_data = integrity_data.loc[integrity_data.index >= bars_df.index.values[0]]
 
 					# 	print(integrity_data.shape)
 					# 	print(integrity_data.values[0])
@@ -761,7 +778,7 @@ class Backtester(object):
 
 					# 	for x in range(integrity_data.shape[0]):
 					# 		if integrity_data.index.values[x] != bars_df.index.values[:integrity_data.shape[0]][x]:
-					# 			print(f'({x}) {integrity_data.index.values[x]} {bars_df.index.index.values[:integrity_data.shape[0]][x]}')
+					# 			print(f'({x}) {integrity_data.index.values[x]} {bars_df.index.values[:integrity_data.shape[0]][x]}')
 					# 			break
 					# 		elif not np.all(integrity_data.values[x] == bars_df.values[:integrity_data.shape[0]][x]):
 					# 			print(f'({x}) {integrity_data.values[x]} {bars_df.values[:integrity_data.shape[0]][x]}')
@@ -834,17 +851,17 @@ class Backtester(object):
 									indicator_array = np.zeros((df.shape[0], len(asks)*3), dtype=float)
 
 								indicator_array[x] = np.concatenate((asks, mids, bids))
-
-							if bars_idx < len(bar_end_ts) and df.index.values[x] == bar_end_ts[bars_idx]:
+							#bars_idx+1 < len(bar_end_ts) and 
+							if df.index.values[x] == bar_end_ts[bars_idx]:
 								bars_idx += 1
-							
-						indicator_dataframes[i][j].append(pd.DataFrame(index=df.index.copy(), data=indicator_array))
-					
-					print(f'[BT] {period} indicators done.', flush=True)
 
-					all_ts = np.concatenate((all_ts, df.index.values))
+						indicator_dataframes[i][j].append(pd.DataFrame(index=df.index.copy(), data=indicator_array))
+						
+					print(f'[BT] {period} indicators done. {bars_idx}', flush=True)
+
+					# all_ts = np.concatenate((all_ts, df.index.values))
 					chart._data[period] = bars_df
-					chart._set_idx(period, bars_start_idx-1)
+					chart._set_idx(period, bars_start_idx)
 					
 					chart.timestamps[period] = chart._data[period].index.values[:bars_start_idx][::-1]
 					c_data = chart._data[period].values[:bars_start_idx]
@@ -855,14 +872,15 @@ class Backtester(object):
 					periods[i].append(period)
 					# dataframes[i].append(df.iloc[start_idx:])
 					dataframes[i].append(df)
+					offsets[i].append(df_off)
 					print(f'[BT] {period} done.', flush=True)
 
 		print('Processing finished.', flush=True)
 		all_ts = np.unique(np.sort(all_ts))
-		return all_ts, periods, dataframes, indicator_dataframes, tick_df
+		return all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets
 
 
-	def _event_loop(self, charts, all_ts, periods, dataframes, indicator_dataframes, tick_df):
+	def _event_loop(self, charts, all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets):
 		print('Start Event Loop.', flush=True)
 
 		print(charts, flush=True)
@@ -876,81 +894,116 @@ class Backtester(object):
 			for y in range(len(charts)):
 				# For Each Period
 				for z in range(len(periods[y])):
-					# Set index of current chart period
-					# if x == all_ts.size:
-					# 	timestamp = all_ts[x-1]
-					# 	idx -= 1
-					# else:
 					timestamp = all_ts[x]
-					tick_timestamp = timestamp
 					chart = charts[y]
-					period = periods[y][z]
-					idx = chart._idx[period]
-					bar_end = False
-
-					period_data = chart._data[period]
-
-					if (
-						(x+1 < all_ts.shape[0] and idx+1 < period_data.shape[0] and all_ts[x+1] >= period_data.index.values[idx+1]) or
-						(idx+1 == period_data.shape[0] and 
-							all_ts[x] + tl.period.getPeriodOffsetSeconds(tl.period.ONE_MINUTE) >= period_data.index.values[idx] + tl.period.getPeriodOffsetSeconds(period))
-					):
-						bar_end = True
-						tick_timestamp = period_data.index.values[idx]
-
-					df = dataframes[y][z]
-					period_data.iloc[idx] = df.iloc[x]
-
-					chart.timestamps[period] = period_data.index.values[:idx+1][::-1]
-
-					c_data = period_data.values[:idx+1]
-
-					chart.asks[period] = c_data[:, :4][::-1]
-					chart.mids[period] = c_data[:, 4:8][::-1]
-					chart.bids[period] = c_data[:, 8:][::-1]
-					# Add offset for real time because ONE MINUTE bars are being used for tick data
-					chart._end_timestamp = timestamp + tl.period.getPeriodOffsetSeconds(tl.period.ONE_MINUTE)
-
-					if x == 0:
-						print(f'{period}: {idx}, {chart.timestamps[period].shape}', flush=True)
-
-					ohlc = chart.getLastOHLC(period)
-					indicators = [ind for ind in chart.indicators.values() if ind.period == period]
-					for i in range(len(indicators)):
-						ind = indicators[i]
-						ind_df = indicator_dataframes[y][z][i]
-
-						result_size = int(ind_df.shape[1]/3)
-						ind._asks[idx] = ind_df.values[x, :result_size]
-						ind._mids[idx] = ind_df.values[x, result_size:result_size*2]
-						ind._bids[idx] = ind_df.values[x, result_size*2:]
-						ind._set_idx(idx)
 
 					# If lowest period, do position/order check
 					if z == 0:
 						c_tick = tick_df.values[x]
-						self.handleOrders(chart.product, chart._end_timestamp, c_tick)
-						self.handleStopLoss(chart.product, chart._end_timestamp, c_tick)
-						self.handleTakeProfit(chart.product, chart._end_timestamp, c_tick)
+						trade_timestamp = timestamp + tl.period.getPeriodOffsetSeconds(tl.period.ONE_MINUTE)
+						self.handleOrders(chart.product, trade_timestamp, c_tick)
+						self.handleStopLoss(chart.product, trade_timestamp, c_tick)
+						self.handleTakeProfit(chart.product, trade_timestamp, c_tick)
 
-					# Call threaded ontick functions
-					if period in chart._subscriptions:
-						for func in chart._subscriptions[period]:
-							tick = EventItem({
-								'chart': chart, 
-								'timestamp': tick_timestamp,
-								'period': period, 
-								'ask': ohlc[:4],
-								'mid': ohlc[4:8],
-								'bid': ohlc[8:],
-								'bar_end': bar_end
-							})
+					off = offsets[y][z]
+					if x >= off:
+						tick_timestamp = timestamp
+						period = periods[y][z]
+						idx = chart._idx[period]
+						bar_end = False
 
-							self.broker.strategy.setTick(tick)
-							func(tick)
+						period_data = chart._data[period]
 
-					if bar_end:
-						chart._idx[period] = idx + 1
+						# if (x+1 < all_ts.shape[0] and idx+1 < period_data.shape[0] and all_ts[x+1] >= period_data.index.values[idx+1]):
+
+						if (
+							x+1 < all_ts.shape[0] and 
+							idx+1 < period_data.shape[0] and 
+							all_ts[x+1] >= period_data.index.values[idx+1]
+						):
+							bar_end = True
+							tick_timestamp = period_data.index.values[idx]
+
+						# elif (
+						# 	idx+1 == period_data.shape[0] and 
+						# 	all_ts[x] + tl.period.getPeriodOffsetSeconds(period) >= period_data.index.values[idx] + tl.period.getPeriodOffsetSeconds(period)
+						# ):
+						# 	bar_end = True
+						# 	tick_timestamp = period_data.index.values[idx]
+						# 	print(f'THIS: {period_data.shape}, {idx}\n{all_ts[x] + tl.period.getPeriodOffsetSeconds(period)}, {period_data.index.values[idx] + tl.period.getPeriodOffsetSeconds(period)}\n{df.shape}, {x}', flush=True)
+						# 	print(f'{period_data.iloc[idx]} -> {df.iloc[x]}', flush=True)
+
+						df = dataframes[y][z]
+						# if idx >= 2000:
+						# 	print(f'CHANGE {period_data.shape} -> {idx}, {df.shape} -> {x}', flush=True)
+
+						# if idx >= period_data.shape[0]:
+
+						# 	if bar_end:
+						# 		ohlc = chart.getLastOHLC(period)
+						# 		print(F'THIS ONE: {period_data.shape}, {idx}, {tick_timestamp}', flush=True)
+
+						# 		# Call threaded ontick functions
+						# 		if period in chart._subscriptions:
+						# 			for func in chart._subscriptions[period]:
+						# 				tick = EventItem({
+						# 					'chart': chart, 
+						# 					'timestamp': tick_timestamp,
+						# 					'period': period, 
+						# 					'ask': ohlc[:4],
+						# 					'mid': ohlc[4:8],
+						# 					'bid': ohlc[8:],
+						# 					'bar_end': bar_end
+						# 				})
+
+						# 				self.broker.strategy.setTick(tick)
+						# 				func(tick)
+						# else:
+						period_data.iloc[idx] = df.iloc[x-off]
+
+						chart.timestamps[period] = period_data.index.values[:idx+1][::-1]
+
+						c_data = period_data.values[:idx+1]
+
+						chart.asks[period] = c_data[:, :4][::-1]
+						chart.mids[period] = c_data[:, 4:8][::-1]
+						chart.bids[period] = c_data[:, 8:][::-1]
+						# Add offset for real time because ONE MINUTE bars are being used for tick data
+						chart._end_timestamp = timestamp + tl.period.getPeriodOffsetSeconds(tl.period.ONE_MINUTE)
+
+						if x == 0:
+							print(f'{period}: {idx}, {chart.timestamps[period].shape}', flush=True)
+
+						ohlc = chart.getLastOHLC(period)
+						indicators = [ind for ind in chart.indicators.values() if ind.period == period]
+						for i in range(len(indicators)):
+							ind = indicators[i]
+							ind_df = indicator_dataframes[y][z][i]
+
+							result_size = int(ind_df.shape[1]/3)
+							ind._asks[idx] = ind_df.values[x-off, :result_size]
+							ind._mids[idx] = ind_df.values[x-off, result_size:result_size*2]
+							ind._bids[idx] = ind_df.values[x-off, result_size*2:]
+							ind._set_idx(idx)
+
+						# Call threaded ontick functions
+						if period in chart._subscriptions:
+							for func in chart._subscriptions[period]:
+								tick = EventItem({
+									'chart': chart, 
+									'timestamp': tick_timestamp,
+									'period': period, 
+									'ask': ohlc[:4],
+									'mid': ohlc[4:8],
+									'bid': ohlc[8:],
+									'bar_end': bar_end
+								})
+
+								self.broker.strategy.setTick(tick)
+								func(tick)
+
+						if bar_end:
+							chart._idx[period] = idx + 1
 
 		print('Event Loop Complete {:.2f}s'.format(time.time() - start_time), flush=True)
 
@@ -967,11 +1020,11 @@ class Backtester(object):
 
 		# Process chart data
 		charts = copy(self.broker.charts)
-		all_ts, periods, dataframes, indicator_dataframes, tick_df = self._process_chart_data(charts, start, end, spread=spread)
+		all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets = self._process_chart_data(charts, start, end, spread=spread)
 
 		# Run event loop
 		if all_ts.size > 0:
-			self._event_loop(charts, all_ts, periods, dataframes, indicator_dataframes, tick_df)
+			self._event_loop(charts, all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets)
 			return True
 		else:
 			print('Nothing to backtest.', flush=True)

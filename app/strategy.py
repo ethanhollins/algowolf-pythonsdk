@@ -45,6 +45,9 @@ class Strategy(object):
 		self.tick_queue = []
 		self.lastTick = None
 
+		if self.app.run_state.value == 'run':
+			Thread(target=self._handle_ticks).start()
+
 	def run(self):
 		self.broker.run()
 
@@ -123,7 +126,9 @@ class Strategy(object):
 		return self.getBroker().getAccountInfo(self.accountId)[self.accountId]['currency']
 
 	def getBalance(self):
-		return self.getBroker().getAccountInfo(self.accountId)[self.accountId]['balance']
+		balance = self.getBroker().getAccountInfo(self.accountId)[self.accountId]['balance']
+		print(f'BALANCE: {balance}', flush=True)
+		return balance
 
 	def getProfitLoss(self):
 		return self.getBroker().getAccountInfo(self.accountId)[self.accountId]['pl']
@@ -431,6 +436,7 @@ class Strategy(object):
 
 	def handleMessageQueue(self):
 		if len(self.message_queue) > 0:
+			print(f'MESSAGE QUEUE, {len(self.message_queue)}', flush=True)
 			try:
 				self.app.sio.emit(
 					'ongui', 
@@ -574,6 +580,7 @@ class Strategy(object):
 			update['reports'] = reports
 
 		if len(update) > 0:
+			print(f'UPLOAD SDK {len(self.info_queue)}', flush=True)
 			endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
 			payload = json.dumps(update).encode()
 			res = self.getBroker().upload(endpoint, payload)
@@ -623,9 +630,36 @@ class Strategy(object):
 			return self.input_variables[name]['value']
 
 
+	def _handle_ticks(self):
+		try:
+			while True:
+				if (
+					self.getBroker().state == State.LIVE and
+					len(self.tick_queue)
+				):
+					for chart in self.app.charts:
+						if (
+							self.tick_queue[0]['broker'] == chart.broker and
+							self.tick_queue[0]['product'] == chart.product
+						):
+							item = self.tick_queue[0]
+							chart.handleTick(item)
+							del self.tick_queue[0]
+							break
+
+				time.sleep(0.001)
+
+		except Exception:
+			print(traceback.format_exc(), flush=True)
+			print('---STOPPED---', flush=True)
+			self.strategy.getBroker().stop()
+
+
 	def setTick(self, tick):
 		self.lastTick = tick
 
+
+	def onTickEnd(self):
 		self.handleMessageQueue()
 		# Save GUI
 		if self.getBroker().state == State.LIVE:
