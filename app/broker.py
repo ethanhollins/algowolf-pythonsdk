@@ -159,10 +159,11 @@ class Broker(object):
 		self.updateAllPositions()
 		self.updateAllOrders()
 
+		self._app.sendScriptRunning()
+		print('LIVE', flush=True)
 		self._prepare_for_live()
 
 
-		print('LIVE', flush=True)
 		self.state = State.LIVE
 
 
@@ -176,10 +177,16 @@ class Broker(object):
 		#       if period in self._chart_subs[api_chart.product]:
 		#           for sub_id in self._chart_subs[api_chart.product][period]:
 		#               api_chart.unsubscribe(period, self.brokerId, sub_id)
-		self._app.sio.disconnect()
-		
-		PID = os.getpid()
-		os.kill(PID, signal.SIGTERM)
+		try:
+			self._app.sendScriptStopped()
+			time.sleep(5)
+			# self._app.sio.disconnect()
+		except:
+			pass
+		finally:
+			PID = os.getpid()
+			# os.kill(PID, signal.SIGTERM)
+			os.kill(PID, signal.SIGKILL)
 
 
 	def startFrom(self, dt):

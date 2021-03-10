@@ -1,5 +1,6 @@
 import importlib
 import sys
+import os
 import requests
 import json
 import time
@@ -93,8 +94,6 @@ class App(object):
 			if 'onStart' in dir(self.module) and callable(self.module.onStart):
 				self.module.onStart()
 
-			self.sendScriptRunning()
-
 		except Exception as e:
 			print(traceback.format_exc(), flush=True)
 			self.stop()
@@ -102,11 +101,23 @@ class App(object):
 
 
 	def stop(self):
+		
 		if self.strategy is not None:
-			self.sendScriptStopped()
 			self.strategy.get('strategy').stop()
 			# self.strategy = None
 			# self.module = None
+		else:
+			self.sendScriptStopped()
+			time.sleep(5)
+
+			try:
+				self.sio.disconnect()
+			except:
+				pass
+			finally:
+				PID = os.getpid()
+				# os.kill(PID, signal.SIGTERM)
+				os.kill(PID, signal.SIGKILL)
 
 
 	def backtest(self, auth_key, broker, _from, to, mode, input_variables, spread):
