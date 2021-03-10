@@ -4,6 +4,8 @@ import math
 import socketio
 import requests
 import pandas as pd
+import datetime
+import dateutil.parser
 from .. import app as tl
 from .broker import Broker, BacktestMode, State
 from threading import Thread
@@ -127,7 +129,6 @@ class Strategy(object):
 
 	def getBalance(self):
 		balance = self.getBroker().getAccountInfo(self.accountId)[self.accountId]['balance']
-		print(f'BALANCE: {balance}', flush=True)
 		return balance
 
 	def getProfitLoss(self):
@@ -436,7 +437,6 @@ class Strategy(object):
 
 	def handleMessageQueue(self):
 		if len(self.message_queue) > 0:
-			print(f'MESSAGE QUEUE, {len(self.message_queue)}', flush=True)
 			try:
 				self.app.sio.emit(
 					'ongui', 
@@ -580,7 +580,6 @@ class Strategy(object):
 			update['reports'] = reports
 
 		if len(update) > 0:
-			print(f'UPLOAD SDK {len(self.info_queue)}', flush=True)
 			endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
 			payload = json.dumps(update).encode()
 			res = self.getBroker().upload(endpoint, payload)
@@ -601,13 +600,42 @@ class Strategy(object):
 
 	def setInputVariable(self, name, input_type, scope=tl.GLOBAL, default=None, properties={}):
 		if input_type == int:
+			assert default is None or isinstance(default, int)
 			input_type = tl.INTEGER
+
 		elif input_type == float:
+			assert default is None or isinstance(default, float)
 			input_type = tl.DECIMAL
+
 		elif input_type == str:
+			assert default is None or isinstance(default, str)
 			input_type = tl.TEXT
-		elif input_type == None:
-			raise Exception('')
+
+		elif input_type == tl.HEADER:
+			assert default is None or isinstance(default, str)
+
+		elif input_type == tl.PERCENTAGE:
+			assert default is None or isinstance(default, float) or isinstance(default, int)
+
+		elif input_type == tl.TIME:
+			assert default is None or isinstance(default, datetime.time) or isinstance(default, str)
+			if isinstance(default, datetime.time):
+				default = default.isoformat()
+			elif isinstance(default, str):
+				dateutil.parser.parse(default)
+
+		elif input_type == tl.DATE:
+			assert default is None or isinstance(default, datetime.datetime) or isinstance(default, str)
+			if isinstance(default, datetime.datetime):
+				default = default.isoformat()
+			elif isinstance(default, str):
+				dateutil.parser.parse(default)
+
+		elif input_type == tl.CASH:
+			assert default is None or isinstance(default, float) or isinstance(default, int)
+
+		elif not input_type in (tl.BALANCE, tl.CUSTOM):
+			raise Exception(f'Unknown input variable type: {input_type}')
 
 		self.input_variables[name] = {
 			'default': default,
@@ -622,17 +650,40 @@ class Strategy(object):
 
 
 	def getInputVariable(self, name):
+		input_type = None
+		value = None
 		if name in self.input_variables:
-			if name in self.user_variables:
-				if self.user_variables[name]['type'] == self.input_variables[name]['type']:
-					return self.user_variables[name]['value']
+			if name in self.user_variables and self.user_variables[name]['type'] == self.input_variables[name]['type']:
+				value = self.user_variables[name]['value']
+				input_type = self.user_variables[name]['type']
 
-			return self.input_variables[name]['value']
+				if 'properties' in self.user_variables[name]:
+					if self.user_variables[name]['properties'].get('enabled') == False:
+						value = None
+
+			else:
+				value = self.input_variables[name]['value']
+				input_type = self.input_variables[name]['type']
+
+				if 'properties' in self.input_variables[name]:
+					if self.input_variables[name]['properties'].get('enabled') == False:
+						value = None
+
+			if input_type == tl.TIME:
+				if value is not None:
+					value = dateutil.parser.parse(value)
+					value = datetime.time(value.hour, value.minute, value.second, value.microsecond)
+
+			elif input_type == tl.DATE:
+				if value is not None:
+					value = dateutil.parser.parse(value)
+
+			return value
 
 
 	def _handle_ticks(self):
 		try:
-			while True:
+			while self.getBroker().state != State.STOPPED:
 				if (
 					self.getBroker().state == State.LIVE and
 					len(self.tick_queue)

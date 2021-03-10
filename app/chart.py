@@ -292,9 +292,15 @@ class Chart(object):
 			})
 
 			self.strategy.setTick(tick)
-			for func in self._subscriptions[item['period']]:
-				func(tick)
-			self.strategy.onTickEnd()
+			try:
+				for func in self._subscriptions[item['period']]:
+					func(tick)
+
+				self.strategy.onTickEnd()
+			except Exception as e:
+				print(traceback.format_exc(), flush=True)
+				print('---STOPPED---', flush=True)
+				self.strategy.getBroker().stop()
 
 
 	def _set_data(self, df, period, append=False):

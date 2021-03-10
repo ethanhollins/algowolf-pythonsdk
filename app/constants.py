@@ -40,12 +40,21 @@ CREATE_LOG = 'create_log'
 Control Panel
 '''
 
+# Display items
 HEADER = 'header'
+BALANCE = 'balance'
+CUSTOM = 'custom'
+
+# Input items
 INTEGER = 'integer'
 DECIMAL = 'decimal'
 PERCENTAGE = 'percentage'
 TEXT = 'text'
+TIME = 'time'
+DATE = 'date'
+CASH = 'cash'
 
+# Scope
 GLOBAL = 'global'
 LOCAL = 'local'
 
