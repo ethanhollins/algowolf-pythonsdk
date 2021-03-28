@@ -369,12 +369,12 @@ class Broker(object):
 					if quick_download:
 						chart.quickDownload(
 							period, 
-							tl.utils.getCountDate(period, 1000, end=start), end
+							tl.utils.getCountDate(period, 100, end=start), end
 						)
 					else:
 						chart.getPrices(
 							period, 
-							start=tl.utils.getCountDate(period, 1000, end=start), 
+							start=tl.utils.getCountDate(period, 100, end=start), 
 							end=end,
 							download=download
 						)
@@ -951,6 +951,8 @@ class Broker(object):
 	'''
 
 	def _download_historical_prices(self, broker, product, period, start, end, count):
+		print(f'LOADER DOWNLOAD HIST: {broker}, {product}, {period}, {start}, {end}, {count}', flush=True)
+
 		now_time = tl.utils.setTimezone(datetime.datetime.utcnow(), 'UTC')
 		if not end is None:
 			if tl.utils.isOffsetAware(end):
@@ -1167,6 +1169,7 @@ class Broker(object):
 					if item.get('accepted'):
 						result = self.onTradeHandler(ref_id, item)
 
+						print(f'ON TRADE RESULT: {result}', flush=True)
 						# Handle result
 						if result is not None and len(result):
 							for func in self.ontrade_subs:

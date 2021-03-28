@@ -414,8 +414,10 @@ class Strategy(object):
 
 
 	def report(self, name, *data):
+		print(f'LOADER REPORT: {name} {self.reports}', flush=True)
 		if name in self.reports:
 			self.reports[name].loc[self.reports[name].shape[0]] = list(map(str, data))
+			print(f'LOADER REPORT DONE: {name} {self.reports}', flush=True)
 
 
 	'''
@@ -558,6 +560,7 @@ class Strategy(object):
 
 
 	def saveGui(self):
+		print('SAVE GUI', flush=True)
 		update = {}
 
 		# if len(self.drawing_queue) > 0:
@@ -577,10 +580,13 @@ class Strategy(object):
 			report = self.reports[name]
 			if report.size > 0:
 				reports[name] = report.to_dict()
+		print(f'SAVE GUI REPORTS: {reports}', flush=True)
 		if len(reports) > 0:
 			update['reports'] = reports
 
+
 		if len(update) > 0:
+			print(f'SAVE GUI UPDATE: {update}', flush=True)
 			endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
 			payload = json.dumps(update).encode()
 			res = self.getBroker().upload(endpoint, payload)
