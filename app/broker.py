@@ -100,6 +100,7 @@ class Broker(object):
 		self.onsessionstatus_subs = []
 		self.handled = {}
 
+		self.time_off = 0
 		self._set_time_off()
 
 		self._session = requests.Session()
@@ -1030,7 +1031,7 @@ class Broker(object):
 							'mid_open', 'mid_high', 'mid_low', 'mid_close',
 							'bid_open', 'bid_high', 'bid_low', 'bid_close'
 						],
-						data=np.concatenate((result['ohlc']['asks'], result['ohlc']['mids'], result['ohlc']['bids']), axis=1)
+						data=np.concatenate((result['ohlc']['mids'], result['ohlc']['mids'], result['ohlc']['mids']), axis=1)
 					)
 					print(result.shape, flush=True)
 				else:

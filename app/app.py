@@ -1,6 +1,7 @@
 import importlib
 import sys
 import os
+import signal
 import requests
 import json
 import time
@@ -103,7 +104,7 @@ class App(object):
 	def stop(self):
 		
 		if self.strategy is not None:
-			self.strategy.get('strategy').stop()
+			self.strategy.stop()
 			# self.strategy = None
 			# self.module = None
 		else:
@@ -196,7 +197,8 @@ class App(object):
 			self.module = self.getPackageModule(f'{self.package}')
 
 			if auth_key is not None:
-				self._retrieve_session_token(auth_key)
+				# self._retrieve_session_token(auth_key)
+				self.key = auth_key
 			else:
 				self.key = ''
 

@@ -531,6 +531,7 @@ class Strategy(object):
 				result[name] = report.to_dict()
 
 		return result
+		
 
 	def getGui(self):
 		endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
