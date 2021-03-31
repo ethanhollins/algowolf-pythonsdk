@@ -369,12 +369,12 @@ class Broker(object):
 					if quick_download:
 						chart.quickDownload(
 							period, 
-							tl.utils.getCountDate(period, 100, end=start), end
+							tl.utils.getCountDate(period, 1000, end=start), end
 						)
 					else:
 						chart.getPrices(
 							period, 
-							start=tl.utils.getCountDate(period, 100, end=start), 
+							start=tl.utils.getCountDate(period, 1000, end=start), 
 							end=end,
 							download=download
 						)
@@ -1193,6 +1193,8 @@ class Broker(object):
 									'item': item.get('item')
 								})
 							)
+
+				self.strategy.onUpdateEnd()
 
 
 			except Exception as e:

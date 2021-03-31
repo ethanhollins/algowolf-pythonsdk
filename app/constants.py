@@ -35,6 +35,7 @@ CLEAR_ALL_DRAWINGS = 'clear_all_drawings'
 
 CREATE_INFO = 'create_info'
 CREATE_LOG = 'create_log'
+BANNER = 'create_banner'
 
 '''
 Control Panel

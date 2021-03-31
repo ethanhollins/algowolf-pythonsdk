@@ -404,6 +404,17 @@ class Strategy(object):
 			self.getBroker().backtester.createInfoItem(item)
 
 
+	def banner(self, html):
+		item = {
+			'type': tl.BANNER,
+			'item': html
+		}
+
+		if self.getBroker().state == State.LIVE:
+			# Append to message queue
+			self.message_queue.append(item)
+
+
 	def createReport(self, name, columns):
 		self.reports[name] = pd.DataFrame(columns=columns)
 
@@ -586,7 +597,6 @@ class Strategy(object):
 
 
 		if len(update) > 0:
-			print(f'SAVE GUI UPDATE: {update}', flush=True)
 			endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
 			payload = json.dumps(update).encode()
 			res = self.getBroker().upload(endpoint, payload)
@@ -725,6 +735,10 @@ class Strategy(object):
 				self.lastSave = time.time()
 				Thread(target=self.saveGui).start()
 
+
+	def onUpdateEnd(self):
+		self.handleMessageQueue()
+		
 	'''
 	Getters
 	'''
