@@ -2,6 +2,7 @@ import time
 import math
 import numpy as np
 import pandas as pd
+import backtester_opt
 from copy import copy
 from datetime import datetime, timedelta
 
@@ -880,136 +881,136 @@ class Backtester(object):
 		return all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets
 
 
-	def _event_loop(self, charts, all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets):
-		print('Start Event Loop.', flush=True)
+	# def _event_loop(self, charts, all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets):
+	# 	print('Start Event Loop.', flush=True)
 
-		print(charts, flush=True)
-		print(all_ts.size, flush=True)
+	# 	print(charts, flush=True)
+	# 	print(all_ts.size, flush=True)
 
-		start_time = time.time()
+	# 	start_time = time.time()
 
-		# For Each Timestamp
-		for x in range(all_ts.size):
-			# For Each Chart
-			for y in range(len(charts)):
-				# For Each Period
-				for z in range(len(periods[y])):
-					timestamp = all_ts[x]
-					chart = charts[y]
+	# 	# For Each Timestamp
+	# 	for x in range(all_ts.size):
+	# 		# For Each Chart
+	# 		for y in range(len(charts)):
+	# 			# For Each Period
+	# 			for z in range(len(periods[y])):
+	# 				timestamp = all_ts[x]
+	# 				chart = charts[y]
 
-					# If lowest period, do position/order check
-					if z == 0:
-						c_tick = tick_df.values[x]
-						trade_timestamp = timestamp + tl.period.getPeriodOffsetSeconds(tl.period.ONE_MINUTE)
-						self.handleOrders(chart.product, trade_timestamp, c_tick)
-						self.handleStopLoss(chart.product, trade_timestamp, c_tick)
-						self.handleTakeProfit(chart.product, trade_timestamp, c_tick)
+	# 				# If lowest period, do position/order check
+	# 				if z == 0:
+	# 					c_tick = tick_df.values[x]
+	# 					trade_timestamp = timestamp + tl.period.getPeriodOffsetSeconds(tl.period.ONE_MINUTE)
+	# 					self.handleOrders(chart.product, trade_timestamp, c_tick)
+	# 					self.handleStopLoss(chart.product, trade_timestamp, c_tick)
+	# 					self.handleTakeProfit(chart.product, trade_timestamp, c_tick)
 
-					off = offsets[y][z]
-					if x >= off:
-						tick_timestamp = timestamp
-						period = periods[y][z]
-						idx = chart._idx[period]
-						bar_end = False
+	# 				off = offsets[y][z]
+	# 				if x >= off:
+	# 					tick_timestamp = timestamp
+	# 					period = periods[y][z]
+	# 					idx = chart._idx[period]
+	# 					bar_end = False
 
-						period_data = chart._data[period]
+	# 					period_data = chart._data[period]
 
-						# if (x+1 < all_ts.shape[0] and idx+1 < period_data.shape[0] and all_ts[x+1] >= period_data.index.values[idx+1]):
+	# 					# if (x+1 < all_ts.shape[0] and idx+1 < period_data.shape[0] and all_ts[x+1] >= period_data.index.values[idx+1]):
 
-						if (
-							x+1 < all_ts.shape[0] and 
-							idx+1 < period_data.shape[0] and 
-							all_ts[x+1] >= period_data.index.values[idx+1]
-						):
-							bar_end = True
-							tick_timestamp = period_data.index.values[idx]
+	# 					if (
+	# 						x+1 < all_ts.shape[0] and 
+	# 						idx+1 < period_data.shape[0] and 
+	# 						all_ts[x+1] >= period_data.index.values[idx+1]
+	# 					):
+	# 						bar_end = True
+	# 						tick_timestamp = period_data.index.values[idx]
 
-						# elif (
-						# 	idx+1 == period_data.shape[0] and 
-						# 	all_ts[x] + tl.period.getPeriodOffsetSeconds(period) >= period_data.index.values[idx] + tl.period.getPeriodOffsetSeconds(period)
-						# ):
-						# 	bar_end = True
-						# 	tick_timestamp = period_data.index.values[idx]
-						# 	print(f'THIS: {period_data.shape}, {idx}\n{all_ts[x] + tl.period.getPeriodOffsetSeconds(period)}, {period_data.index.values[idx] + tl.period.getPeriodOffsetSeconds(period)}\n{df.shape}, {x}', flush=True)
-						# 	print(f'{period_data.iloc[idx]} -> {df.iloc[x]}', flush=True)
+	# 					# elif (
+	# 					# 	idx+1 == period_data.shape[0] and 
+	# 					# 	all_ts[x] + tl.period.getPeriodOffsetSeconds(period) >= period_data.index.values[idx] + tl.period.getPeriodOffsetSeconds(period)
+	# 					# ):
+	# 					# 	bar_end = True
+	# 					# 	tick_timestamp = period_data.index.values[idx]
+	# 					# 	print(f'THIS: {period_data.shape}, {idx}\n{all_ts[x] + tl.period.getPeriodOffsetSeconds(period)}, {period_data.index.values[idx] + tl.period.getPeriodOffsetSeconds(period)}\n{df.shape}, {x}', flush=True)
+	# 					# 	print(f'{period_data.iloc[idx]} -> {df.iloc[x]}', flush=True)
 
-						df = dataframes[y][z]
-						# if idx >= 2000:
-						# 	print(f'CHANGE {period_data.shape} -> {idx}, {df.shape} -> {x}', flush=True)
+	# 					df = dataframes[y][z]
+	# 					# if idx >= 2000:
+	# 					# 	print(f'CHANGE {period_data.shape} -> {idx}, {df.shape} -> {x}', flush=True)
 
-						# if idx >= period_data.shape[0]:
+	# 					# if idx >= period_data.shape[0]:
 
-						# 	if bar_end:
-						# 		ohlc = chart.getLastOHLC(period)
-						# 		print(F'THIS ONE: {period_data.shape}, {idx}, {tick_timestamp}', flush=True)
+	# 					# 	if bar_end:
+	# 					# 		ohlc = chart.getLastOHLC(period)
+	# 					# 		print(F'THIS ONE: {period_data.shape}, {idx}, {tick_timestamp}', flush=True)
 
-						# 		# Call threaded ontick functions
-						# 		if period in chart._subscriptions:
-						# 			for func in chart._subscriptions[period]:
-						# 				tick = EventItem({
-						# 					'chart': chart, 
-						# 					'timestamp': tick_timestamp,
-						# 					'period': period, 
-						# 					'ask': ohlc[:4],
-						# 					'mid': ohlc[4:8],
-						# 					'bid': ohlc[8:],
-						# 					'bar_end': bar_end
-						# 				})
+	# 					# 		# Call threaded ontick functions
+	# 					# 		if period in chart._subscriptions:
+	# 					# 			for func in chart._subscriptions[period]:
+	# 					# 				tick = EventItem({
+	# 					# 					'chart': chart, 
+	# 					# 					'timestamp': tick_timestamp,
+	# 					# 					'period': period, 
+	# 					# 					'ask': ohlc[:4],
+	# 					# 					'mid': ohlc[4:8],
+	# 					# 					'bid': ohlc[8:],
+	# 					# 					'bar_end': bar_end
+	# 					# 				})
 
-						# 				self.broker.strategy.setTick(tick)
-						# 				func(tick)
-						# else:
-						period_data.iloc[idx] = df.iloc[x-off]
+	# 					# 				self.broker.strategy.setTick(tick)
+	# 					# 				func(tick)
+	# 					# else:
+	# 					period_data.iloc[idx] = df.iloc[x-off]
 
-						chart.timestamps[period] = period_data.index.values[:idx+1][::-1]
+	# 					chart.timestamps[period] = period_data.index.values[:idx+1][::-1]
 
-						c_data = period_data.values[:idx+1]
+	# 					c_data = period_data.values[:idx+1]
 
-						chart.asks[period] = c_data[:, :4][::-1]
-						chart.mids[period] = c_data[:, 4:8][::-1]
-						chart.bids[period] = c_data[:, 8:][::-1]
-						# Add offset for real time because ONE MINUTE bars are being used for tick data
-						chart._end_timestamp = timestamp + tl.period.getPeriodOffsetSeconds(tl.period.ONE_MINUTE)
+	# 					chart.asks[period] = c_data[:, :4][::-1]
+	# 					chart.mids[period] = c_data[:, 4:8][::-1]
+	# 					chart.bids[period] = c_data[:, 8:][::-1]
+	# 					# Add offset for real time because ONE MINUTE bars are being used for tick data
+	# 					chart._end_timestamp = timestamp + tl.period.getPeriodOffsetSeconds(tl.period.ONE_MINUTE)
 
-						if x == 0:
-							print(f'{period}: {idx}, {chart.timestamps[period].shape}', flush=True)
+	# 					if x == 0:
+	# 						print(f'{period}: {idx}, {chart.timestamps[period].shape}', flush=True)
 
-						ohlc = chart.getLastOHLC(period)
-						indicators = [ind for ind in chart.indicators.values() if ind.period == period]
-						for i in range(len(indicators)):
-							ind = indicators[i]
-							ind_df = indicator_dataframes[y][z][i]
+	# 					ohlc = chart.getLastOHLC(period)
+	# 					indicators = [ind for ind in chart.indicators.values() if ind.period == period]
+	# 					for i in range(len(indicators)):
+	# 						ind = indicators[i]
+	# 						ind_df = indicator_dataframes[y][z][i]
 
-							result_size = int(ind_df.shape[1]/3)
-							ind._asks[idx] = ind_df.values[x-off, :result_size]
-							ind._mids[idx] = ind_df.values[x-off, result_size:result_size*2]
-							ind._bids[idx] = ind_df.values[x-off, result_size*2:]
-							ind._set_idx(idx)
+	# 						result_size = int(ind_df.shape[1]/3)
+	# 						ind._asks[idx] = ind_df.values[x-off, :result_size]
+	# 						ind._mids[idx] = ind_df.values[x-off, result_size:result_size*2]
+	# 						ind._bids[idx] = ind_df.values[x-off, result_size*2:]
+	# 						ind._set_idx(idx)
 
-						# Call threaded ontick functions
-						if period in chart._subscriptions:
-							for func in chart._subscriptions[period]:
-								tick = EventItem({
-									'chart': chart, 
-									'timestamp': tick_timestamp,
-									'period': period, 
-									'ask': ohlc[:4],
-									'mid': ohlc[4:8],
-									'bid': ohlc[8:],
-									'bar_end': bar_end
-								})
+	# 					# Call threaded ontick functions
+	# 					if period in chart._subscriptions:
+	# 						for func in chart._subscriptions[period]:
+	# 							tick = EventItem({
+	# 								'chart': chart, 
+	# 								'timestamp': tick_timestamp,
+	# 								'period': period, 
+	# 								'ask': ohlc[:4],
+	# 								'mid': ohlc[4:8],
+	# 								'bid': ohlc[8:],
+	# 								'bar_end': bar_end
+	# 							})
 
-								self.broker.strategy.setTick(tick)
-								func(tick)
+	# 							self.broker.strategy.setTick(tick)
+	# 							func(tick)
 
-						if bar_end:
-							chart._idx[period] = idx + 1
+	# 					if bar_end:
+	# 						chart._idx[period] = idx + 1
 
-		print('Event Loop Complete {:.2f}s'.format(time.time() - start_time), flush=True)
+	# 	print('Event Loop Complete {:.2f}s'.format(time.time() - start_time), flush=True)
 
-		# for i in charts:
-		# 	for period in chart._data:
-		# 		print(f'{period}: {chart._data[period].index.values[-1]}\n{chart._data[period].values[-1]}', flush=True)
+	# 	# for i in charts:
+	# 	# 	for period in chart._data:
+	# 	# 		print(f'{period}: {chart._data[period].index.values[-1]}\n{chart._data[period].values[-1]}', flush=True)
 
 
 	def performBacktest(self, mode, start=None, end=None, spread=None):
@@ -1024,7 +1025,7 @@ class Backtester(object):
 
 		# Run event loop
 		if all_ts.size > 0:
-			self._event_loop(charts, all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets)
+			backtester_opt._event_loop(self, charts, all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets)
 			return True
 		else:
 			print('Nothing to backtest.', flush=True)
