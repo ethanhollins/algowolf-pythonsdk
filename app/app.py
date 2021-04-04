@@ -44,7 +44,8 @@ class App(object):
 		self.indicators = []
 		self.charts = []
 
-		sys.path.append(os.path.join(config.get('SCRIPTS_PATH'), self.scriptId))
+		self._script_path = os.path.join(config.get('SCRIPTS_PATH'), self.scriptId)
+		sys.path.append(self._script_path)
 
 
 	def _convert_account_code(self, account_code):
@@ -181,9 +182,50 @@ class App(object):
 		return properties
 
 
+	def recursivelyImportScript(self, name, path):
+		print(f'recursivelyImportScript: {os.listdir(path)}', flush=True)
+		# for i in os.listdir(path):
+		# 	c_path = os.path.join(path, i)
+		# 	print(f'{c_path}: {c_path.endswith(".py")}', flush=True)
+		# 	if c_path.endswith('.py'):
+		# 		spec = importlib.util.find_spec(name + '.' + i.split('.')[0])
+		# 		print(spec.name, flush=True)
+		# 		module = importlib.util.module_from_spec(spec)
+		# 		print(module, flush=True)		
+
+				# sys.modules[name] = module
+				# spec.loader.exec_module(module)
+
+			# elif os.path.isdir(c_path):
+
+		for i in os.listdir(path):
+			c_path = os.path.join(path, i)
+			if os.path.isdir(c_path) and i != 'venv':
+				print(f'APPEND: {c_path}', flush=True)
+				sys.path.append(c_path)
+				self.recursivelyImportScript(name, c_path)
+
+			elif c_path.endswith('.py') or c_path.endswith('.pyx'):
+				module_name = name + '.' + i.split('.')[0]
+				print(module_name, flush=True)
+				spec = importlib.util.spec_from_file_location(module_name, c_path)
+				print(c_path, flush=True)
+				print(spec, flush=True)
+
+
+
+
 	def getPackageModule(self, package):
+
+		print(package, flush=True)
 		spec = importlib.util.find_spec(package)
 		module = importlib.util.module_from_spec(spec)
+		print(spec.name, flush=True)
+		print(dir(module), flush=True)
+
+		print(os.listdir(self._script_path), flush=True)
+		self.recursivelyImportScript(spec.name, self._script_path)
+
 		# sys.modules[spec.name] = module
 		spec.loader.exec_module(module)
 

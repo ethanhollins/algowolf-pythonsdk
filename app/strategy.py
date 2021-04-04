@@ -425,10 +425,10 @@ class Strategy(object):
 
 
 	def report(self, name, *data):
-		print(f'LOADER REPORT: {name} {self.reports}', flush=True)
+		# print(f'LOADER REPORT: {name} {self.reports}', flush=True)
 		if name in self.reports:
 			self.reports[name].loc[self.reports[name].shape[0]] = list(map(str, data))
-			print(f'LOADER REPORT DONE: {name} {self.reports}', flush=True)
+			# print(f'LOADER REPORT DONE: {name} {self.reports}', flush=True)
 
 
 	'''

@@ -6,18 +6,16 @@ def _event_loop(self, charts, all_ts, periods, dataframes, indicator_dataframes,
 	start_time = time.time()
 
 	# Iterator Vars
-	cpdef int x
-	cpdef int y
-	cpdef int z
+	cdef int x
+	cdef int y
+	cdef int z
 
 	# Body Vars
-	cpdef int c_tick
-	cpdef int idx
-	cpdef int off
-	cpdef float timestamp
-	cpdef float trade_timestamp
-
-
+	# cdef np.ndarray[float, ndim=1] c_tick
+	cdef int idx
+	cdef int off
+	cdef float timestamp
+	cdef float trade_timestamp
 
 	# For Each Timestamp
 	for x in range(all_ts.size):
@@ -29,12 +27,12 @@ def _event_loop(self, charts, all_ts, periods, dataframes, indicator_dataframes,
 				chart = charts[y]
 
 				# If lowest period, do position/order check
-				if z == 0:
-					c_tick = tick_df.values[x]
-					trade_timestamp = timestamp + 60
-					self.handleOrders(chart.product, trade_timestamp, c_tick)
-					self.handleStopLoss(chart.product, trade_timestamp, c_tick)
-					self.handleTakeProfit(chart.product, trade_timestamp, c_tick)
+				# if z == 0:
+				# 	c_tick = tick_df.values[x]
+				# 	trade_timestamp = timestamp + 60
+				# 	self.handleOrders(chart.product, trade_timestamp, c_tick)
+				# 	self.handleStopLoss(chart.product, trade_timestamp, c_tick)
+				# 	self.handleTakeProfit(chart.product, trade_timestamp, c_tick)
 
 				off = offsets[y][z]
 				if x >= off:
@@ -68,16 +66,16 @@ def _event_loop(self, charts, all_ts, periods, dataframes, indicator_dataframes,
 					chart._end_timestamp = timestamp + 60
 
 					ohlc = chart.getLastOHLC(period)
-					indicators = [ind for ind in chart.indicators.values() if ind.period == period]
-					for i in range(len(indicators)):
-						ind = indicators[i]
-						ind_df = indicator_dataframes[y][z][i]
+					# indicators = [ind for ind in chart.indicators.values() if ind.period == period]
+					# for i in range(len(indicators)):
+					# 	ind = indicators[i]
+					# 	ind_df = indicator_dataframes[y][z][i]
 
-						result_size = int(ind_df.shape[1]/3)
-						ind._asks[idx] = ind_df.values[x-off, :result_size]
-						ind._mids[idx] = ind_df.values[x-off, result_size:result_size*2]
-						ind._bids[idx] = ind_df.values[x-off, result_size*2:]
-						ind._set_idx(idx)
+					# 	result_size = int(ind_df.shape[1]/3)
+					# 	ind._asks[idx] = ind_df.values[x-off, :result_size]
+					# 	ind._mids[idx] = ind_df.values[x-off, result_size:result_size*2]
+					# 	ind._bids[idx] = ind_df.values[x-off, result_size*2:]
+					# 	ind._set_idx(idx)
 
 					# Call threaded ontick functions
 					if period in chart._subscriptions:

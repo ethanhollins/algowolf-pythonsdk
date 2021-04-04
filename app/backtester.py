@@ -2,7 +2,6 @@ import time
 import math
 import numpy as np
 import pandas as pd
-import backtester_opt
 from copy import copy
 from datetime import datetime, timedelta
 
@@ -1471,4 +1470,6 @@ class OandaBacktester(Backtester):
 Imports
 '''
 from .. import app as tl
+from . import backtester_opt
 from .broker import EventItem
+
