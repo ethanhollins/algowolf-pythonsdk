@@ -247,34 +247,34 @@ class App(object):
 			self.strategy = Strategy(self, self.module, strategy_id=self.strategyId, broker_id=self.brokerId, account_id=self.accountId, user_variables=input_variables)
 
 			# Set global variables
-			self.module.print = self.strategy.log
+			self.module.main.print = self.strategy.log
 
-			self.module.strategy = self.strategy
-			self.module.utils = tl.utils
-			self.module.product = tl.product
-			self.module.period = tl.period
-			self.module.indicator = tl.indicator
+			self.module.main.strategy = self.strategy
+			self.module.main.utils = tl.utils
+			self.module.main.product = tl.product
+			self.module.main.period = tl.period
+			self.module.main.indicator = tl.indicator
 			for i in dir(tl.constants):
-				vars(self.module)[i] = vars(tl.constants)[i]
+				vars(self.module.main)[i] = vars(tl.constants)[i]
 
 			# Initialize strategy
-			if 'init' in dir(self.module) and callable(self.module.init):
-				self.module.init()
+			if 'init' in dir(self.module.main) and callable(self.module.main.init):
+				self.module.main.init()
 
 			# Search for convertional function names
-			if 'onTrade' in dir(self.module) and callable(self.module.onTrade):
-				self.strategy.getBroker().subscribeOnTrade(self.module.onTrade)
+			if 'onTrade' in dir(self.module.main) and callable(self.module.main.onTrade):
+				self.strategy.getBroker().subscribeOnTrade(self.module.main.onTrade)
 
-			if 'onRejected' in dir(self.module) and callable(self.module.onRejected):
-				self.strategy.getBroker().subscribeOnRejected(self.module.onRejected)	
+			if 'onRejected' in dir(self.module.main) and callable(self.module.main.onRejected):
+				self.strategy.getBroker().subscribeOnRejected(self.module.main.onRejected)	
 
-			if 'onTick' in dir(self.module) and callable(self.module.onTick):
+			if 'onTick' in dir(self.module.main) and callable(self.module.main.onTick):
 				for chart in self.strategy.getBroker().getAllCharts():
 					for period in chart.periods:
-						chart.subscribe(period, self.module.onTick)
+						chart.subscribe(period, self.module.main.onTick)
 
-			if 'onSessionStatus' in dir(self.module) and callable(self.module.onSessionStatus):
-				self.strategy.getBroker().subscribeOnSessionStatus(self.module.onSessionStatus)
+			if 'onSessionStatus' in dir(self.module.main) and callable(self.module.main.onSessionStatus):
+				self.strategy.getBroker().subscribeOnSessionStatus(self.module.main.onSessionStatus)
 
 
 	def sendScriptRunning(self):

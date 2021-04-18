@@ -1,5 +1,7 @@
+import os
 import time
 import math
+import json
 import numpy as np
 import pandas as pd
 from copy import copy
@@ -1012,6 +1014,82 @@ class Backtester(object):
 	# 	# 		print(f'{period}: {chart._data[period].index.values[-1]}\n{chart._data[period].values[-1]}', flush=True)
 
 
+	def _save_processed_data(self, charts, all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets, bars_df_list, ind_bars_df_list, bars_start_idx):
+		if not os.path.exists('/app/cached'):
+			os.makedirs('/app/cached')
+		all_ts_df = pd.DataFrame(data=np.asarray(all_ts))
+		all_ts_df.to_csv('/app/cached/all_ts.csv')
+		tick_df.to_csv('/app/cached/tick_df.csv')
+
+		for i in range(len(charts)):
+			for j in range(len(periods[i])):
+				dataframes[i][j].to_csv(f'/app/cached/df_{i}_{j}.csv')
+				bars_df_list[i][j].to_csv(f'/app/cached/bars_df_{i}_{j}.csv')
+				for k in range(len(indicator_dataframes[i][j])):
+					indicator_dataframes[i][j][k].to_csv(f'/app/cached/ind_df_{i}_{j}_{k}.csv')
+					pd.DataFrame(data=ind_bars_df_list[i][j][k]).to_csv(f'/app/cached/ind_bars_df_{i}_{j}_{k}.csv')
+
+		with open('/app/cached/offsets.json', 'w') as f:
+			f.write(json.dumps({ 
+				'offsets': offsets,
+				'periods': periods,
+				'bars_start_idx': bars_start_idx
+			}, indent=2))
+
+
+	def _load_processed_data(self, charts):
+
+		# LOAD DATA FROM FILE
+		with open('/app/cached/offsets.json', 'r') as f:
+			data = json.loads(f.read())
+			offsets = data['offsets']
+			periods = data['periods']
+			bars_start_idx = data['bars_start_idx']
+
+		all_ts = pd.read_csv('/app/cached/all_ts.csv', index_col=0).values[:,0]
+		tick_df = pd.read_csv('/app/cached/tick_df.csv', index_col=0)
+
+		dataframes = []
+		bars_df_list = []
+		indicator_dataframes = []
+		ind_bars_df_list = []
+		for i in range(len(charts)):
+			dataframes.append([])
+			bars_df_list.append([])
+			indicator_dataframes.append([])
+			ind_bars_df_list.append([])
+			for j in range(len(periods[i])):
+				dataframes[i].append(pd.read_csv(f'/app/cached/df_{i}_{j}.csv', index_col=0))
+				bars_df_list[i].append(pd.read_csv(f'/app/cached/bars_df_{i}_{j}.csv', index_col=0))
+				indicator_dataframes[i].append([])
+				ind_bars_df_list[i].append([])
+				for k in range(4):
+					indicator_dataframes[i][j].append(pd.read_csv(f'/app/cached/ind_df_{i}_{j}_{k}.csv', index_col=0))
+					ind_bars_df_list[i][j].append(pd.read_csv(f'/app/cached/ind_bars_df_{i}_{j}_{k}.csv', index_col=0).values)
+
+		# PROCESS DATA
+		for i in range(len(charts)):
+			chart = charts[i]
+			for j in range(len(periods[i])):
+				period = periods[i][j]
+				bars_df = bars_df_list[i][j]
+				chart._data[period] = bars_df
+
+				indicators = [ind for ind in chart.indicators.values() if ind.period == period]
+				for k in range(4):
+					ind = indicators[k]
+					ind_bars = ind_bars_df_list[i][j][k]
+					x_size = int(ind_bars.shape[1] / 3)
+
+					ind._asks = ind_bars[:, :x_size]
+					ind._mids = ind_bars[:, x_size:x_size*2]
+					ind._bids = ind_bars[:, x_size*2:]
+
+				chart._set_idx(period, bars_start_idx)
+
+		return all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets
+
+
 	def performBacktest(self, mode, start=None, end=None, spread=None):
 		print('PERFORM BACKTEST', flush=True)
 		# Get timestamps
@@ -1020,7 +1098,10 @@ class Backtester(object):
 
 		# Process chart data
 		charts = copy(self.broker.charts)
-		all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets = self._process_chart_data(charts, start, end, spread=spread)
+		all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets, bars_df_list, ind_bars_df_list, bars_start_idx = backtester_opt._process_chart_data(charts, start, end, spread=spread)
+
+		self._save_processed_data(charts, all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets, bars_df_list, ind_bars_df_list, bars_start_idx)
+		# all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets = self._load_processed_data(charts)
 
 		# Run event loop
 		if all_ts.size > 0:

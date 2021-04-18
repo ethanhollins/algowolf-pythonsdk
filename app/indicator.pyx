@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 import functools
 
@@ -45,7 +46,7 @@ class Indicator(object):
 		
 		return timestamps, asks, mids, bids
 
-	def _perform_calculation(self, price_type, ohlc, idx):
+	def _perform_calculation(self, int price_type, double[:,:] ohlc, int idx):
 		return
 
 
@@ -60,9 +61,9 @@ class Indicator(object):
 
 
 	def limit(self):
-		self._asks = self._asks[-tl.BUFFER_COUNT:]
-		self._mids = self._mids[-tl.BUFFER_COUNT:]
-		self._bids = self._bids[-tl.BUFFER_COUNT:]
+		self._asks = self._asks[-constants.BUFFER_COUNT:]
+		self._mids = self._mids[-constants.BUFFER_COUNT:]
+		self._bids = self._bids[-constants.BUFFER_COUNT:]
 		self.idx = self._asks.shape[0]-1
 
 		self.asks = RoundedArray(self._asks[:self.idx+1][::-1], self.precision)
@@ -86,9 +87,9 @@ class Indicator(object):
 
 		# Calculate ask prices
 		for i in range(idx, timestamps.shape[0]):
-			new_ask = [self._perform_calculation('ask', asks, i)]
+			new_ask = [self._perform_calculation(0, asks, i)]
 			if isinstance(self._asks, type(None)):
-				self._asks = np.array(new_ask, dtype=float)
+				self._asks = np.array(new_ask, dtype=np.float64)
 			elif i < self._asks.shape[0]:
 				self._asks[i] = new_ask[0]
 			else:
@@ -96,10 +97,10 @@ class Indicator(object):
 
 		# Calculate mid prices
 		for i in range(idx, timestamps.shape[0]):
-			new_mid = [self._perform_calculation('mid', mids, i)]
+			new_mid = [self._perform_calculation(1, mids, i)]
 
 			if isinstance(self._mids, type(None)):
-				self._mids = np.array(new_mid, dtype=float)
+				self._mids = np.array(new_mid, dtype=np.float64)
 			elif i < self._mids.shape[0]:
 				# if self.period == tl.period.TWO_MINUTES:
 				# 	print(f'REPLACE {self.name}, {idx}, {new_mid}, {self._mids.shape}', flush=True)
@@ -111,10 +112,10 @@ class Indicator(object):
 
 		# Calculate bid prices
 		for i in range(idx, timestamps.shape[0]):
-			new_bid = [self._perform_calculation('bid', bids, i)]
+			new_bid = [self._perform_calculation(2, bids, i)]
 
 			if isinstance(self._bids, type(None)):
-				self._bids = np.array(new_bid, dtype=float)
+				self._bids = np.array(new_bid, dtype=np.float64)
 			elif i < self._bids.shape[0]:
 				self._bids[i] = new_bid[0]
 			else:
@@ -146,10 +147,13 @@ class BOLL(Indicator):
 	def __init__(self, period, std_dev, precision=5):
 		super().__init__('boll', [period, std_dev], None, precision=precision)
 
-	def _perform_calculation(self, price_type, ohlc, idx):
+	def _perform_calculation(self, int price_type, double[:,:] ohlc, int idx):
 		# Properties:
-		period = self.properties[0]
-		std_dev = self.properties[1]
+		cdef int period = self.properties[0]
+		cdef double std_dev = self.properties[1]
+		cdef double mean
+		cdef double d_sum
+		cdef double sd
 
 		# Get relevant OHLC
 		ohlc = ohlc[max((idx+1)-period, 0):idx+1]
@@ -160,7 +164,7 @@ class BOLL(Indicator):
 
 		# Perform calculation
 		mean = np.sum(ohlc[:,3]) / ohlc.shape[0]
-		d_sum = np.sum((ohlc[:,3] - mean) ** 2)
+		d_sum = np.sum(np.subtract(ohlc[:,3], mean) ** 2)
 		sd = np.sqrt(d_sum/period)
 
 		return [
@@ -200,27 +204,30 @@ class EMA(Indicator):
 	def __init__(self, period, precision=5):
 		super().__init__('ema', [period], [0, 0], precision=precision)
 
-	def _perform_calculation(self, price_type, ohlc, idx):
+	def _perform_calculation(self, int price_type, double[:,:] ohlc, int idx):
 		# Properties:
-		period = self.properties[0]
+		cdef double period = self.properties[0]
+		cdef double prev_ema
+		cdef double multi
+		cdef double ma
+		cdef double ema
 
 		# Get relevant OHLC
-		ohlc = ohlc[max((idx+1)-period, 0):idx+1]
+		ohlc = ohlc[max((idx+1)-<int> period, 0):idx+1]
 		# Check min period met
 		if ohlc.shape[0] < period:
 			return [np.nan]
 
 		# Perform calculation
-
 		if idx > period:
-			if price_type == 'ask':
+			if price_type == 0:
 				prev_ema = self._asks[idx-1, 0]
-			elif price_type == 'mid':
+			elif price_type == 1:
 				prev_ema = self._mids[idx-1, 0]
 			else:
 				prev_ema = self._bids[idx-1, 0]
 
-			multi = 2 / (period + 1)
+			multi = 2.0 / (period + 1.0)
 			ema = (ohlc[-1, 3] - prev_ema) * multi + prev_ema
 
 		else:
@@ -364,12 +371,20 @@ class TR(Indicator):
 	def __init__(self, period, precision=5):
 		super().__init__('tr', [period], None, precision=precision)
 
-	def _perform_calculation(self, price_type, ohlc, idx):
+	def _perform_calculation(self, int price_type, double[:,:] ohlc, int idx):
 		# Properties:
-		period = self.properties[0]
+		cdef double period = self.properties[0]
+		cdef double prev
+		cdef double prev_close
+		cdef double high
+		cdef double low
+		cdef double tr
+		cdef double alpha
+		cdef double atr
+		cdef double tr_sum
 
 		# Get relevant OHLC
-		ohlc = ohlc[max((idx+1)-(period+1), 0):idx+1]
+		ohlc = ohlc[max((idx+1)-(<int> period+1), 0):idx+1]
 
 		# Check min period met
 		if ohlc.shape[0] < period+1:
@@ -377,9 +392,9 @@ class TR(Indicator):
 
 		# Perform calculation
 		if idx > period+1:
-			if price_type == 'ask':
+			if price_type == 0:
 				prev = self._asks[idx-1, 0]
-			elif price_type == 'mid':
+			elif price_type == 1:
 				prev = self._mids[idx-1, 0]
 			else:
 				prev = self._bids[idx-1, 0]
@@ -533,6 +548,4 @@ class RSI(Indicator):
 Imports
 '''
 
-from .. import app as tl
-
-
+from . import constants
