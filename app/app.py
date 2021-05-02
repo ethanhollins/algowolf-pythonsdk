@@ -122,7 +122,7 @@ class App(object):
 				os.kill(PID, signal.SIGKILL)
 
 
-	def backtest(self, auth_key, broker, _from, to, mode, input_variables, spread):
+	def backtest(self, auth_key, broker, _from, to, mode, input_variables, spread, process_mode):
 		self.run_state = RunState.BACKTEST
 
 		e = None
@@ -139,7 +139,7 @@ class App(object):
 			if spread is not None:
 				spread = float(spread)
 
-			backtest_id = self.strategy.backtest(_from, to, spread=spread, mode=mode)
+			backtest_id = self.strategy.backtest(_from, to, spread=spread, mode=mode, process_mode=process_mode)
 		except Exception as err:
 			print(traceback.format_exc(), flush=True)
 			e = err

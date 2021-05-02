@@ -1090,7 +1090,7 @@ class Backtester(object):
 		return all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets
 
 
-	def performBacktest(self, mode, start=None, end=None, spread=None):
+	def performBacktest(self, mode, start=None, end=None, spread=None, process_mode=None):
 		print('PERFORM BACKTEST', flush=True)
 		# Get timestamps
 		start_ts = tl.convertTimeToTimestamp(start)
@@ -1098,10 +1098,14 @@ class Backtester(object):
 
 		# Process chart data
 		charts = copy(self.broker.charts)
-		all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets, bars_df_list, ind_bars_df_list, bars_start_idx = backtester_opt._process_chart_data(charts, start, end, spread=spread)
 
-		self._save_processed_data(charts, all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets, bars_df_list, ind_bars_df_list, bars_start_idx)
-		# all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets = self._load_processed_data(charts)
+		if process_mode == 'save' or process_mode is None:
+			all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets, bars_df_list, ind_bars_df_list, bars_start_idx = backtester_opt._process_chart_data(charts, start, end, spread=spread)
+			if process_mode == 'save':
+				self._save_processed_data(charts, all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets, bars_df_list, ind_bars_df_list, bars_start_idx)
+
+		elif process_mode == 'load':
+			all_ts, periods, dataframes, indicator_dataframes, tick_df, offsets = self._load_processed_data(charts)
 
 		# Run event loop
 		if all_ts.size > 0:

@@ -73,11 +73,11 @@ class Strategy(object):
 	Broker functions
 	'''
 
-	def backtest(self, start, end, spread=None, mode=BacktestMode.RUN):
+	def backtest(self, start, end, spread=None, mode=BacktestMode.RUN, process_mode=None):
 		if self.getBroker().state != State.STOPPED:
 			if isinstance(mode, str):
 				mode = BacktestMode(mode)
-			return self.getBroker().backtest(start, end, spread=spread, mode=mode, quick_download=True)
+			return self.getBroker().backtest(start, end, spread=spread, mode=mode, quick_download=True, process_mode=process_mode)
 
 		else:
 			raise tl.error.BrokerlibException('Strategy has been stopped.')

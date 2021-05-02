@@ -58,12 +58,15 @@ def run(package, strategy_id, account_code, key, input_variables, config):
 @click.option(
 	'-s', '--spread', 'spread'
 )
-def backtest(package, strategy_id, key, broker, _from, to, input_variables, config, spread):
+@click.option(
+	'-pm', '--process-mode', 'process_mode'
+)
+def backtest(package, strategy_id, key, broker, _from, to, input_variables, config, spread, process_mode):
 	input_variables = json.loads(input_variables)
 	config = json.loads(config)
 
 	app = App(config, package, strategy_id, None)
-	app.backtest(key, broker, _from, to, 'run', input_variables, spread)
+	app.backtest(key, broker, _from, to, 'run', input_variables, spread, process_mode)
 
 
 @click.command('compile', short_help='Compile strategy script.')

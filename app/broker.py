@@ -232,12 +232,12 @@ class Broker(object):
 		self._clear_backtest_orders()
 
 
-	def _perform_backtest(self, start, end, spread=None, mode=BacktestMode.RUN, download=True, quick_download=False):
+	def _perform_backtest(self, start, end, spread=None, mode=BacktestMode.RUN, download=True, quick_download=False, process_mode=None):
 		# Collect relevant data
 		# self._collect_data(start, end, download=download, quick_download=quick_download)
 
 		# Run backtest
-		return self.backtester.performBacktest(mode.value, start=start, end=end, spread=spread)
+		return self.backtester.performBacktest(mode.value, start=start, end=end, spread=spread, process_mode=process_mode)
 
 
 	def _generate_backtest(self, start, end):
@@ -310,10 +310,10 @@ class Broker(object):
 		return res
 
 
-	def backtest(self, start, end, spread=None, mode=BacktestMode.RUN, upload=False, download=True, quick_download=False):
+	def backtest(self, start, end, spread=None, mode=BacktestMode.RUN, upload=False, download=True, quick_download=False, process_mode=None):
 		self.state = State.BACKTEST
 
-		self._perform_backtest(start, end, spread=spread, mode=mode, download=download, quick_download=quick_download)
+		self._perform_backtest(start, end, spread=spread, mode=mode, download=download, quick_download=quick_download, process_mode=process_mode)
 
 		# Upload Backtest
 		endpoint = f'/v1/strategy/{self.strategyId}/backtest'
@@ -331,7 +331,7 @@ class Broker(object):
 		# Collect relevant data and connect to live broker
 		end = tl.convertTimestampToTime(time.time() + self.time_off)
 		print(f'Start: {start}, End: {end}')
-		backtest_complete = self._perform_backtest(start, end, spread=0.0, quick_download=quick_download)
+		backtest_complete = self._perform_backtest(start, end, spread=0.0, quick_download=quick_download, process_mode=None)
 
 		if backtest_complete:
 			if self.isUploadBacktest:

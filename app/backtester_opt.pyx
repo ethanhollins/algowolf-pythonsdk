@@ -75,7 +75,8 @@ def _process_chart_data(charts, start, end, spread=None):
 		if data.size > 0:
 			# Set Tick Artificial Spread
 			if isinstance(spread, float):
-				half_spread = utils.convertToPrice(spread / 2)
+				# half_spread = utils.convertToPrice(spread / 2)
+				half_spread = round((spread / 2) / 100, 2)
 				# Ask
 				tick_df.values[:, :4] = tick_df.values[:, 4:8] + half_spread
 				# Bid
@@ -158,7 +159,8 @@ def _process_chart_data(charts, start, end, spread=None):
 
 				# Set Artificial Spread
 				if isinstance(spread, float):
-					half_spread = utils.convertToPrice(spread / 2)
+					# half_spread = utils.convertToPrice(spread / 2)
+					half_spread = round((spread / 2) / 100, 2)
 					# Ask
 					df.values[:, :4] = df.values[:, 4:8] + half_spread
 					# Bid
