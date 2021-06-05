@@ -102,12 +102,8 @@ class Indicator(object):
 			if isinstance(self._mids, type(None)):
 				self._mids = np.array(new_mid, dtype=np.float64)
 			elif i < self._mids.shape[0]:
-				# if self.period == tl.period.TWO_MINUTES:
-				# 	print(f'REPLACE {self.name}, {idx}, {new_mid}, {self._mids.shape}', flush=True)
 				self._mids[i] = new_mid[0]
 			else:
-				# if self.period == tl.period.TWO_MINUTES:
-				# 	print(f'ADD NEW {self.name}, {idx}, {new_mid}, {self._mids.shape}', flush=True)
 				self._mids = np.concatenate((self._mids, new_mid))
 
 		# Calculate bid prices
@@ -478,7 +474,7 @@ class CCI(Indicator):
 class RSI(Indicator):
 
 	def __init__(self, period, precision=5):
-		super().__init__('rsi', [period], [0, 0, 0, 0], precision=precision)
+		super().__init__('rsi', [period], [0, 0, 0, 0, 0, 0], precision=precision)
 
 	def _perform_calculation(self, price_type, ohlc, idx):
 		# Properties:
@@ -525,16 +521,16 @@ class RSI(Indicator):
 			gain_avg = gain_sum / period
 			loss_avg = loss_sum / period
 
-		if price_type == 'ask':
-			if idx > len(self.asks)-1:
+		if price_type == 0:
+			if not isinstance(self._asks, type(None)) and idx > self._asks.shape[0]-1:
 				self.storage[0] = gain_avg
 				self.storage[1] = loss_avg
-		elif price_type == 'mid':
-			if idx > len(self.mids)-1:
+		elif price_type == 1:
+			if not isinstance(self._mids, type(None)) and idx > self._mids.shape[0]-1:
 				self.storage[2] = gain_avg
 				self.storage[3] = loss_avg
 		else:
-			if idx > len(self.bids)-1:
+			if not isinstance(self._bids, type(None)) and idx > self._bids.shape[0]-1:
 				self.storage[4] = gain_avg
 				self.storage[5] = loss_avg
 
@@ -543,6 +539,108 @@ class RSI(Indicator):
 		else:
 			return [100.0 - (100.0 / (1.0 + gain_avg/loss_avg))]
 
+
+# Relative Strength Index
+class MACD(Indicator):
+
+	def __init__(self, fast, slow, signal, precision=5):
+		super().__init__('macd', [fast, slow, signal], [0, 0, 0, 0, 0, 0, 0, 0, 0], precision=precision)
+
+	def _perform_calculation(self, price_type, ohlc, idx):
+		# Properties:
+		fast_period = self.properties[0]
+		slow_period = self.properties[1]
+		signal_period = self.properties[2]
+
+		# Get relevant OHLC
+		ohlc = ohlc[max((idx+1)-(slow_period+1), 0):idx+1]
+		# Check min period met
+		if ohlc.shape[0] < slow_period+1:
+			return [np.nan, np.nan, np.nan]
+
+		# Perform calculation
+		# Fast EMA
+		if idx > fast_period:
+			if price_type == 0:
+				prev_fast_ema = self.storage[0]
+			elif price_type == 1:
+				prev_fast_ema = self.storage[1]
+			else:
+				prev_fast_ema = self.storage[2]
+
+			multi = 2.0 / (fast_period + 1.0)
+			fast_ema = (ohlc[-1, 3] - prev_fast_ema) * multi + prev_fast_ema
+
+		else:
+			fast_ma = 0
+			for i in range(fast_period):
+				fast_ma += ohlc[i,3]
+
+			fast_ema = fast_ma / fast_period
+
+		if price_type == 0:
+			self.storage[0] = fast_ema
+		elif price_type == 1:
+			self.storage[1] = fast_ema
+		else:
+			self.storage[2] = fast_ema
+
+		# Slow Ema
+		if idx > slow_period:
+			if price_type == 0:
+				prev_slow_ema = self.storage[3]
+			elif price_type == 1:
+				prev_slow_ema = self.storage[4]
+			else:
+				prev_slow_ema = self.storage[5]
+
+			multi = 2.0 / (slow_period + 1.0)
+			slow_ema = (ohlc[-1, 3] - prev_slow_ema) * multi + prev_slow_ema
+
+		else:
+			# Slow EMA
+			slow_ma = 0
+			for i in range(slow_period):
+				slow_ma += ohlc[i,3]
+
+			slow_ema = slow_ma / slow_period
+
+		if price_type == 0:
+			self.storage[3] = slow_ema
+		elif price_type == 1:
+			self.storage[4] = slow_ema
+		else:
+			self.storage[5] = slow_ema
+
+		# MACD
+		macd = fast_ema - slow_ema
+
+		if idx > signal_period:
+			# Signal Ema
+			if price_type == 0:
+				prev_signal_ema = self.storage[6]
+			elif price_type == 1:
+				prev_signal_ema = self.storage[7]
+			else:
+				prev_signal_ema = self.storage[8]
+
+			multi = 2.0 / (signal_period + 1.0)
+			signal_ema = (macd - prev_signal_ema) * multi + prev_signal_ema
+
+		else:
+			# Slow EMA
+			signal_ema = macd / signal_period
+
+		if price_type == 0:
+			self.storage[6] = signal_ema
+		elif price_type == 1:
+			self.storage[7] = signal_ema
+		else:
+			self.storage[8] = signal_ema
+
+		hist = macd - signal_ema
+
+		return [macd, signal_ema, hist]
 
 '''
 Imports

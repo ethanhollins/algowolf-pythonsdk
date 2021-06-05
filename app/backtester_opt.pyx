@@ -75,8 +75,8 @@ def _process_chart_data(charts, start, end, spread=None):
 		if data.size > 0:
 			# Set Tick Artificial Spread
 			if isinstance(spread, float):
-				# half_spread = utils.convertToPrice(spread / 2)
-				half_spread = round((spread / 2) / 100, 2)
+				half_spread = utils.convertToPrice(spread / 2)
+				# half_spread = round((spread / 2) / 100, 2)
 				# Ask
 				tick_df.values[:, :4] = tick_df.values[:, 4:8] + half_spread
 				# Bid
@@ -159,8 +159,8 @@ def _process_chart_data(charts, start, end, spread=None):
 
 				# Set Artificial Spread
 				if isinstance(spread, float):
-					# half_spread = utils.convertToPrice(spread / 2)
-					half_spread = round((spread / 2) / 100, 2)
+					half_spread = utils.convertToPrice(spread / 2)
+					# half_spread = round((spread / 2) / 100, 2)
 					# Ask
 					df.values[:, :4] = df.values[:, 4:8] + half_spread
 					# Bid
@@ -253,6 +253,10 @@ def _process_chart_data(charts, start, end, spread=None):
 
 def _event_loop(self, charts, double[:] all_ts, list periods, list dataframes, list indicator_dataframes, tick_df, list offsets):
 	print('Start Event Loop.')
+	print(all_ts.size)
+	print(charts)
+	print(periods)
+	sys.stdout.flush()
 	start_time = time.time()
 
 	# Iterator Vars
@@ -263,6 +267,12 @@ def _event_loop(self, charts, double[:] all_ts, list periods, list dataframes, l
 	cdef int x_size = all_ts.size
 	cdef int y_size = len(charts)
 	cdef int z_size = len(periods[0])
+
+	print("Loop 1")
+	print(x_size)
+	print(y_size)
+	print(z_size)
+	sys.stdout.flush()
 
 	# Body Vars
 	# cdef np.ndarray[float, ndim=1] c_tick

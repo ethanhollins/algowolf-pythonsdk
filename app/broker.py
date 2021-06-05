@@ -164,7 +164,6 @@ class Broker(object):
 		print('LIVE', flush=True)
 		self._prepare_for_live()
 
-
 		self.state = State.LIVE
 
 
@@ -388,8 +387,9 @@ class Broker(object):
 	def setName(self, name):
 		self.name = name
 		if self.name in (OANDA_NAME, FXCM_NAME, SPOTWARE_NAME, PAPERTRADER_NAME):
-			self.backtester = tl.OandaBacktester(self)
-		elif self.name in (IG_NAME):
+			# self.backtester = tl.OandaBacktester(self)
+			self.backtester = tl.IGBacktester(self)
+		elif self.name in (IG_NAME,):
 			self.backtester = tl.IGBacktester(self)
 
 
@@ -654,12 +654,16 @@ class Broker(object):
 	def _convert_lotsize(self, lotsize):
 		if self.name == SPOTWARE_NAME:
 			return int(round(lotsize, 2) * 10000000)
+		elif self.name == OANDA_NAME:
+			return int(lotsize * 100000)
 		else:
 			return lotsize
 
 	def _convert_incoming_lotsize(self, lotsize):
 		if self.name == SPOTWARE_NAME:
 			return round(lotsize / 10000000, 2)
+		elif self.name == OANDA_NAME:
+			return round(lotsize / 100000, 5)
 		else:
 			return lotsize
 
@@ -1137,7 +1141,9 @@ class Broker(object):
 	def _stream_ontick(self, item):
 		if not self.state == State.STOPPED:
 			try:
-				self.getChart(item['product'], broker=item['broker'])._on_tick(item)
+				chart = self.getChart(item['product'], broker=item['broker'])
+				if chart is not None:
+					chart._on_tick(item)
 			except Exception as e:
 				print(traceback.format_exc(), flush=True)
 				self._app.sendScriptStopped()
@@ -1181,6 +1187,7 @@ class Broker(object):
 										'item': result
 									})
 								)
+						print(f'ON TRADE HANDLED', flush=True)
 
 					else:
 						for func in self.onrejected_subs:
@@ -1195,6 +1202,7 @@ class Broker(object):
 							)
 
 				self.strategy.onUpdateEnd()
+				print(f'ON UPDATE END HANDLED', flush=True)
 
 
 			except Exception as e:

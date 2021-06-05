@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+import sys
 import time
 import traceback
 from copy import copy
@@ -218,7 +219,6 @@ class Chart(object):
 		
 
 	def handleTick(self, item):
-
 		if item['period'] == tl.period.TICK:
 			self.timestamps[item['period']] = item['timestamp']
 			self.asks[item['period']] = item['item']['ask']
@@ -238,8 +238,9 @@ class Chart(object):
 		else:
 			# Update current ask/mid/bid prices
 			ohlc = item['item']['ask'] + item['item']['mid'] + item['item']['bid']
-
+			
 			last_ts = self._data[item['period']].index.values[-1] + tl.period.getPeriodOffsetSeconds(item['period'])
+
 
 			if item['timestamp'] < last_ts - tl.period.getPeriodOffsetSeconds(item['period']):
 				print(f'SKIP {item["timestamp"]}', flush=True)
@@ -249,12 +250,14 @@ class Chart(object):
 				return
 
 			elif not item['bar_end'] and item['timestamp'] >= last_ts:
+				# print(f'BAR END {item["timestamp"]}, {item["bar_end"]}', flush=True)
 				new_ts = self.getNewTimestamp(item['period'], item['timestamp'], last_ts)
 				# print(f'NEW {item["timestamp"]}, {new_ts}, {last_ts}', flush=True)
 				self._idx[item['period']] += 1
 				self._data[item['period']].loc[new_ts] = ohlc
 
 			else:
+				# print(f'TICK {item["timestamp"]}, {item["bar_end"]}', flush=True)
 				self._data[item['period']].iloc[-1] = ohlc
 				
 			# print(f'CALC {item["timestamp"]} -> {item["bar_end"]}', flush=True)
@@ -582,7 +585,7 @@ class Chart(object):
 		if not period in self.periods:
 			raise TradelibException('Period not found in chart.')
 
-		return self._data[period].values[self._idx[period]][4:]
+		return self._data[period].values[self._idx[period]][8:]
 
 
 	def isChart(self, broker, product):

@@ -425,10 +425,8 @@ class Strategy(object):
 
 
 	def report(self, name, *data):
-		# print(f'LOADER REPORT: {name} {self.reports}', flush=True)
 		if name in self.reports:
 			self.reports[name].loc[self.reports[name].shape[0]] = list(map(str, data))
-			# print(f'LOADER REPORT DONE: {name} {self.reports}', flush=True)
 
 
 	'''
@@ -463,7 +461,7 @@ class Strategy(object):
 					namespace='/admin'
 				)
 			except Exception:
-				pass
+				print(traceback.format_exc(), flush=True)
 
 			self.message_queue = []
 
@@ -705,15 +703,20 @@ class Strategy(object):
 					self.getBroker().state == State.LIVE and
 					len(self.tick_queue)
 				):
+					handled = False
 					for chart in self.app.charts:
 						if (
 							self.tick_queue[0]['broker'] == chart.broker and
 							self.tick_queue[0]['product'] == chart.product
 						):
+							handled = True
 							item = self.tick_queue[0]
 							chart.handleTick(item)
 							del self.tick_queue[0]
 							break
+
+					if not handled:
+						del self.tick_queue[0]
 
 				time.sleep(0.001)
 

@@ -1053,19 +1053,27 @@ class Backtester(object):
 		bars_df_list = []
 		indicator_dataframes = []
 		ind_bars_df_list = []
+		k_numbers = []
 		for i in range(len(charts)):
 			dataframes.append([])
 			bars_df_list.append([])
 			indicator_dataframes.append([])
 			ind_bars_df_list.append([])
+			k_numbers.append([])
 			for j in range(len(periods[i])):
 				dataframes[i].append(pd.read_csv(f'/app/cached/df_{i}_{j}.csv', index_col=0))
 				bars_df_list[i].append(pd.read_csv(f'/app/cached/bars_df_{i}_{j}.csv', index_col=0))
 				indicator_dataframes[i].append([])
 				ind_bars_df_list[i].append([])
-				for k in range(4):
-					indicator_dataframes[i][j].append(pd.read_csv(f'/app/cached/ind_df_{i}_{j}_{k}.csv', index_col=0))
-					ind_bars_df_list[i][j].append(pd.read_csv(f'/app/cached/ind_bars_df_{i}_{j}_{k}.csv', index_col=0).values)
+				for k in range(100):
+					if os.path.exists(f'/app/cached/ind_df_{i}_{j}_{k}.csv'):
+						indicator_dataframes[i][j].append(pd.read_csv(f'/app/cached/ind_df_{i}_{j}_{k}.csv', index_col=0))
+						ind_bars_df_list[i][j].append(pd.read_csv(f'/app/cached/ind_bars_df_{i}_{j}_{k}.csv', index_col=0).values)
+					else:
+						k_numbers[i].append(k)
+						break
+
+		print(f'K NUMBERS: {k_numbers}', flush=True)
 
 		# PROCESS DATA
 		for i in range(len(charts)):
@@ -1076,7 +1084,7 @@ class Backtester(object):
 				chart._data[period] = bars_df
 
 				indicators = [ind for ind in chart.indicators.values() if ind.period == period]
-				for k in range(4):
+				for k in range(len(indicators)):
 					ind = indicators[k]
 					ind_bars = ind_bars_df_list[i][j][k]
 					x_size = int(ind_bars.shape[1] / 3)
@@ -1222,7 +1230,7 @@ class IGBacktester(Backtester):
 
 
 	def modifyOrder(self, order, lotsize, entry_range, entry_price, sl_range, tp_range, sl_price, tp_price):
-		prev_item = copy(pos)
+		prev_item = copy(order)
 
 		result = super(IGBacktester, self).modifyOrder(
 			order, lotsize, entry_range, entry_price, sl_range, tp_range, sl_price, tp_price
@@ -1246,7 +1254,7 @@ class IGBacktester(Backtester):
 
 
 	def deleteOrder(self, order):
-		prev_item = copy(pos)
+		prev_item = copy(order)
 
 		result = super(IGBacktester, self).deleteOrder(order)
 
