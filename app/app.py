@@ -93,8 +93,9 @@ class App(object):
 				self.strategy.run()
 
 			# Call strategy onStart
-			if 'onStart' in dir(self.module) and callable(self.module.onStart):
-				self.module.onStart()
+			if 'onStart' in dir(self.module.main) and callable(self.module.main.onStart):
+				print(f"[onStart]: {self.strategy.getBroker().state}")
+				self.module.main.onStart()
 
 		except Exception as e:
 			print(traceback.format_exc(), flush=True)

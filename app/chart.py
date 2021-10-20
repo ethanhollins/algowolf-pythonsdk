@@ -246,7 +246,6 @@ class Chart(object):
 				print(f'SKIP {item["timestamp"]}', flush=True)
 				# Skip tick
 				# del self.strategy.tick_queue[queue_idx]
-				del self.strategy.tick_queue[0]
 				return
 
 			elif not item['bar_end'] and item['timestamp'] >= last_ts:
@@ -304,6 +303,9 @@ class Chart(object):
 				print(traceback.format_exc(), flush=True)
 				print('---STOPPED---', flush=True)
 				self.strategy.getBroker().stop()
+
+			if item['bar_end']:
+				print(f"[{self.strategy.strategyId}] {item['period']} done.")
 
 
 	def _set_data(self, df, period, append=False):

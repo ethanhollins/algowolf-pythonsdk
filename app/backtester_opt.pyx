@@ -69,7 +69,7 @@ def _process_chart_data(charts, start, end, spread=None):
 			start, end, set_data=False
 		)
 
-		all_ts = data.index.values
+		all_ts = data.index.values.astype(np.float64)
 		tick_df = data.copy()
 
 		if data.size > 0:

@@ -3,6 +3,7 @@ import time
 import math
 import socketio
 import requests
+import traceback
 import pandas as pd
 import datetime
 import dateutil.parser
@@ -272,7 +273,8 @@ class Strategy(object):
 			# Append to message queue
 			self.message_queue.append(item)
 			# Save to drawing queue
-			self.transaction_queue.append(item)
+			if self.strategyId == "Q529J5" or self.strategyId == "34MULF":
+				self.transaction_queue.append(item)
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
 			# Handle drawings through backtester
@@ -295,7 +297,8 @@ class Strategy(object):
 			# Append to message queue
 			self.message_queue.append(item)
 			# Handle to drawing queue
-			self.transaction_queue.append(item)
+			if self.strategyId == "Q529J5" or self.strategyId == "34MULF":
+				self.transaction_queue.append(item)
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
 			timestamp = self.lastTick.chart._end_timestamp
@@ -320,7 +323,8 @@ class Strategy(object):
 			# Append to message queue
 			self.message_queue.append(item)
 			# Handle to drawing queue
-			self.transaction_queue.append(item)
+			if self.strategyId == "Q529J5" or self.strategyId == "34MULF":
+				self.transaction_queue.append(item)
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
 			timestamp = self.lastTick.chart._end_timestamp
@@ -348,7 +352,8 @@ class Strategy(object):
 			# Append to message queue
 			self.message_queue.append(item)
 			# Save to log queue
-			self.transaction_queue.append(item)
+			if self.strategyId == "Q529J5" or self.strategyId == "34MULF":
+				self.transaction_queue.append(item)
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
 			if self.lastTick is not None:
@@ -388,7 +393,8 @@ class Strategy(object):
 			# Append to message queue
 			self.message_queue.append(item)
 			# Handle to info queue
-			self.info_queue.append(item)
+			if self.strategyId == "Q529J5" or self.strategyId == "34MULF":
+				self.info_queue.append(item)
 
 		elif self.getBroker().state.value <= State.BACKTEST_AND_RUN.value:
 			item = {
@@ -593,7 +599,6 @@ class Strategy(object):
 		if len(reports) > 0:
 			update['reports'] = reports
 
-
 		if len(update) > 0:
 			endpoint = f'/v1/strategy/{self.strategyId}/gui/{self.brokerId}/{self.accountId}'
 			payload = json.dumps(update).encode()
@@ -609,8 +614,8 @@ class Strategy(object):
 				self.user_variables[name]['value'] = item[name]['value']
 
 		# Initialize strategy
-		if 'onUserInput' in dir(module) and callable(module.onUserInput):
-			module.onUserInput(item)
+		if 'onUserInput' in dir(self.module.main) and callable(self.module.main.onUserInput):
+			self.module.main.onUserInput(item)
 
 
 	def setInputVariable(self, name, input_type, scope=tl.GLOBAL, default=None, properties={}):
@@ -684,14 +689,28 @@ class Strategy(object):
 					if self.input_variables[name]['properties'].get('enabled') == False:
 						value = None
 
-			if input_type == tl.TIME:
-				if value is not None:
+			if value is not None:
+				if input_type == tl.INTEGER:
+					value = int(value)
+
+				elif input_type == tl.DECIMAL:
+					value = float(value)
+
+				elif input_type == tl.TEXT:
+					value = str(value)
+
+				elif input_type == tl.PERCENTAGE:
+					value = float(value)
+
+				elif input_type == tl.TIME:
 					value = dateutil.parser.parse(value)
 					value = datetime.time(value.hour, value.minute, value.second, value.microsecond)
 
-			elif input_type == tl.DATE:
-				if value is not None:
+				elif input_type == tl.DATE:
 					value = dateutil.parser.parse(value)
+
+				elif input_type == tl.CASH:
+					value = float(value)
 
 			return value
 
