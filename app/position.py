@@ -118,7 +118,8 @@ class Position(dict):
 		status_code = res.status_code
 		if status_code == 200:
 			res = res.json()
-		
+			print(f"[Position.close] {res}", flush=True)
+
 			for ref_id, item in res.items():
 				if item.get('accepted'):
 					func = self._broker._get_trade_handler(item.get('type'))

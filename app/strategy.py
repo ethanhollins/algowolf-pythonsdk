@@ -145,12 +145,18 @@ class Strategy(object):
 
 	# Order functions
 	def getAllPositions(self):
-		result = self.getBroker().getAllPositions(account_id=self.accountId)
+		if self.getBroker().state == State.LIVE:
+			result = self.getBroker().getAllPositions(account_id=self.accountId)
+		else:
+			result = self.getBroker().backtest_positions
 		return result
 
 
 	def getAllOrders(self):
-		result = self.getBroker().getAllOrders(account_id=self.accountId)
+		if self.getBroker().state == State.LIVE:
+			result = self.getBroker().getAllOrders(account_id=self.accountId)
+		else:
+			result = self.getBroker().backtest_orders
 		return result
 
 

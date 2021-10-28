@@ -20,6 +20,7 @@ from enum import Enum
 from .. import app as tl
 from .app import App
 from io import BytesIO
+from redis import Redis
 
 '''
 Broker Names
@@ -72,10 +73,6 @@ Parent Broker Class
 '''
 class Broker(object):
 
-	# __slots__ = (
-	#   'name', 'controller', 'charts', 'positions', 'closed_positions', 'orders', 
-	#   'on_tick', 'on_new_bar', 'on_trade', 'on_stop_loss', 'on_take_profit'
-	# )
 	def __init__(self, app, strategy, strategy_id=None, broker_id=None, account_id=None, data_path='data/'):
 		self._app = app
 		self.strategy = strategy
@@ -93,14 +90,19 @@ class Broker(object):
 		self._start_from = None
 		self._data_path = data_path
 
+		self.redis_client = Redis(host='redis', port=6379, password="dev")
+
 		# Containers
 		self.charts = []
-		self.positions = []
-		self.orders = []
+		# self.positions = []
+		# self.orders = []
 		self.ontrade_subs = []
 		self.onrejected_subs = []
 		self.onsessionstatus_subs = []
 		self.handled = {}
+
+		self.backtest_positions = []
+		self.backtest_orders = []
 
 		self.time_off = 0
 		self._set_time_off()
@@ -112,6 +114,16 @@ class Broker(object):
 			'Content-Type': 'application/json'
 		})
 		self._url = self._app.config.get('API_URL')
+
+
+	def __getattribute__(self, key):
+
+		if key == 'positions':
+			return self.getAllPositions()
+		elif key == 'orders':
+			return self.getAllOrders()
+
+		return super().__getattribute__(key)
 
 
 	'''
@@ -159,8 +171,8 @@ class Broker(object):
 			self._collect_data(end, end, download=False, quick_download=True)
 
 
-		self.updateAllPositions()
-		self.updateAllOrders()
+		# self.updateAllPositions()
+		# self.updateAllOrders()
 
 		self._app.sendScriptRunning()
 		print('LIVE', flush=True)
@@ -556,6 +568,8 @@ class Broker(object):
 		else:
 			return self.findChartByProduct(product)._end_timestamp
 
+	def getBrokerKey(self):
+		return self.strategyId + "." + self.brokerId
 
 	def updateAllPositions(self):
 		endpoint = f'/v1/strategy/{self.strategyId}/brokers/{self.brokerId}/positions'
@@ -577,12 +591,30 @@ class Broker(object):
 			print(res.json(), flush=True)
 			pass
 
+	def getDbPositions(self):
+		positions = self.redis_client.hget(self.getBrokerKey(), "positions")
+		if positions is None:
+			positions = []
+		else:
+			positions = [
+				tl.position.Position.fromDict(self, i) 
+				for i in json.loads(positions)
+				if i.get('account_id') == self.accountId and self.chartProductExists(i.get("product"))
+			]
+		return positions
 
 	def getAllPositions(self, account_id=None):
-		return [
-			pos for pos in self.positions 
-			if not account_id or pos.account_id == account_id
-		]
+		if self.state == State.LIVE:
+			return [
+				pos for pos in self.getDbPositions() 
+				if not account_id or pos.account_id == account_id
+			]
+		else:
+			print('GETTING BACKTEST POSITIONS', flush=True)
+			return [
+				pos for pos in self.backtest_positions
+				if not account_id or pos.account_id == account_id
+			]
 
 	def getPositionByID(self, order_id):
 		for pos in self.getAllPositions():
@@ -609,11 +641,30 @@ class Broker(object):
 		else:
 			pass
 
+	def getDbOrders(self):
+		orders = self.redis_client.hget(self.getBrokerKey(), "orders")
+		if orders is None:
+			orders = []
+		else:
+			orders = [
+				tl.order.Order.fromDict(self, i) 
+				for i in json.loads(orders)
+				if i.get('account_id') == self.accountId and self.chartProductExists(i.get("product"))
+			]
+		return orders
+
 	def getAllOrders(self, account_id=None):
-		return [
-			order for order in self.orders 
-			if not account_id or order.account_id == account_id
-		]
+		if self.state == State.LIVE:
+			return [
+				order for order in self.getDbOrders() 
+				if not account_id or order.account_id == account_id
+			]
+		else:
+			print('GETTING BACKTEST ORDERS', flush=True)
+			return [
+				order for order in self.backtest_orders
+				if not account_id or order.account_id == account_id
+			]
 
 	def getOrderByID(self, order_id):
 		for order in self.orders:
@@ -846,8 +897,9 @@ class Broker(object):
 		sl_range=None, tp_range=None,
 		sl_price=None, tp_price=None
 	):
-		if len(self.positions) > 0:
-			direction = self.positions[-1].direction
+		positions = self.positions
+		if len(positions) > 0:
+			direction = positions[-1].direction
 			self.closeAllPositions()
 		else:
 			raise tl.error.OrderException('Must be in position to stop and reverse.')
@@ -1450,33 +1502,46 @@ class Broker(object):
 		result = []
 		order_type = item.get('type')
 
-		# Position Entry
-		if order_type == tl.MARKET_ENTRY or order_type == tl.LIMIT_ENTRY or order_type == tl.STOP_ENTRY:
-			result = self.handlePositionEntry(ref_id, item)
+		# if self.state == State.LIVE:
+		if (order_type == tl.LIMIT_ORDER or order_type == tl.STOP_ORDER
+			or (order_type == tl.MODIFY and (item["item"]["order_type"] == tl.LIMIT_ORDER or item["item"]["order_type"] == tl.STOP_ORDER))
+			or order_type == tl.ORDER_CANCEL):
+			result = tl.order.Order.fromDict(self, item["item"])
+		elif (order_type == tl.MARKET_ENTRY or order_type == tl.LIMIT_ENTRY or order_type == tl.STOP_ENTRY
+			  or (order_type == tl.MODIFY and not (item["item"]["order_type"] == tl.LIMIT_ORDER or item["item"]["order_type"] == tl.STOP_ORDER))
+			  or order_type == tl.POSITION_CLOSE or order_type == tl.STOP_LOSS or order_type == tl.TAKE_PROFIT):
+			result = tl.position.Position.fromDict(self, item["item"])
+		
+		self.handled[ref_id] = result
+			
+		# else:
+		# 	# Position Entry
+		# 	if order_type == tl.MARKET_ENTRY or order_type == tl.LIMIT_ENTRY or order_type == tl.STOP_ENTRY:
+		# 		result = self.handlePositionEntry(ref_id, item)
 
-		# Order Placement
-		elif order_type == tl.LIMIT_ORDER or order_type == tl.STOP_ORDER:
-			result = self.handleOrderPlacement(ref_id, item)
+		# 	# Order Placement
+		# 	elif order_type == tl.LIMIT_ORDER or order_type == tl.STOP_ORDER:
+		# 		result = self.handleOrderPlacement(ref_id, item)
 
-		# Trade Modification
-		elif order_type == tl.MODIFY:
-			result = self.handleModify(ref_id, item)
+		# 	# Trade Modification
+		# 	elif order_type == tl.MODIFY:
+		# 		result = self.handleModify(ref_id, item)
 
-		# Position Close
-		elif (
-			order_type == tl.POSITION_CLOSE
-			or order_type == tl.STOP_LOSS
-			or order_type == tl.TAKE_PROFIT
-		):
-			print('HANDLE POSITION CLOSE', flush=True)
-			result = self.handlePositionClose(ref_id, item)
+		# 	# Position Close
+		# 	elif (
+		# 		order_type == tl.POSITION_CLOSE
+		# 		or order_type == tl.STOP_LOSS
+		# 		or order_type == tl.TAKE_PROFIT
+		# 	):
+		# 		print('HANDLE POSITION CLOSE', flush=True)
+		# 		result = self.handlePositionClose(ref_id, item)
 
-		# Order Cancel
-		elif order_type == tl.ORDER_CANCEL:
-			result = self.handleOrderClose(ref_id, item)
+		# 	# Order Cancel
+		# 	elif order_type == tl.ORDER_CANCEL:
+		# 		result = self.handleOrderClose(ref_id, item)
 
-		elif order_type == tl.UPDATE:
-			self.handleUpdate(ref_id, item.get('item'))
+		# 	# elif order_type == tl.UPDATE:
+		# 	# 	self.handleUpdate(ref_id, item.get('item'))
 
 		return result
 
