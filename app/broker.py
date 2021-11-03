@@ -1,14 +1,9 @@
 import numpy as np
 import pandas as pd
 import datetime
-import random
-import string
 import requests
 import time
 import json
-import asyncio
-import threading
-import sys
 import os
 import signal
 import shortuuid
@@ -148,8 +143,8 @@ class Broker(object):
 
 		self._app.sio.on('connect', handler=self._stream_connect, namespace='/user')
 		self._app.sio.on('disconnect', handler=self._stream_disconnect, namespace='/user')
-		self._app.sio.on('ontick', handler=self._stream_ontick, namespace='/user')
-		self._app.sio.on('ontrade', handler=self._stream_ontrade, namespace='/user')
+		# self._app.sio.on('ontick', handler=self._stream_ontick, namespace='/user')
+		# self._app.sio.on('ontrade', handler=self._stream_ontrade, namespace='/user')
 		self._app.sio.on('onsessionstatus', handler=self._stream_onsessionstatus, namespace='/user')
 
 		self._app.connectSio()
@@ -399,7 +394,7 @@ class Broker(object):
 
 	def setName(self, name):
 		self.name = name
-		if self.name in (OANDA_NAME, FXCM_NAME, SPOTWARE_NAME, PAPERTRADER_NAME, FXOPEN_NAME):
+		if self.name in (OANDA_NAME, FXCM_NAME, SPOTWARE_NAME, PAPERTRADER_NAME, FXOPEN_NAME, 'loadtest'):
 			# self.backtester = tl.OandaBacktester(self)
 			self.backtester = tl.IGBacktester(self)
 		elif self.name in (IG_NAME,):
@@ -407,15 +402,33 @@ class Broker(object):
 
 
 	def _initialize_strategy(self):
-		endpoint = f'/v1/strategy/{self.strategyId}/init/{self.brokerId}'
-		res = self._session.post(
-			self._url + endpoint
-		)
+		# endpoint = f'/v1/strategy/{self.strategyId}/init/{self.brokerId}'
+		# res = self._session.post(
+		# 	self._url + endpoint
+		# )
 
-		if res.status_code == 200:
-			return res.json()
+		# if res.status_code == 200:
+		# 	return res.json()
+		# else:
+		# 	print(res.json(), flush=True)
+
+		msg_id = self.generateReference()
+		self._app.sendRequest({
+			"type": "request",
+			"timeout": 300,
+			"message": {
+				"msg_id": msg_id,
+				"ept": "init_strategy_by_broker_id_ept",
+				"args": [self.strategyId, self.brokerId],
+				"Authorization": "Bearer " + self._app.key
+			}
+		})
+		res = self._app.waitResponse(msg_id, timeout=300)
+		print(f"[_initialize_strategy] {res}", flush=True)
+		if not "error" in res:
+			return res["result"]
 		else:
-			print(res.json(), flush=True)
+			return self._initialize_strategy()
 
 
 	def _subscribe_charts(self, charts):
@@ -610,7 +623,6 @@ class Broker(object):
 				if not account_id or pos.account_id == account_id
 			]
 		else:
-			print('GETTING BACKTEST POSITIONS', flush=True)
 			return [
 				pos for pos in self.backtest_positions
 				if not account_id or pos.account_id == account_id
@@ -660,7 +672,6 @@ class Broker(object):
 				if not account_id or order.account_id == account_id
 			]
 		else:
-			print('GETTING BACKTEST ORDERS', flush=True)
 			return [
 				order for order in self.backtest_orders
 				if not account_id or order.account_id == account_id
@@ -1187,16 +1198,16 @@ class Broker(object):
 
 	def _stream_connect(self):
 		print('Connected.', flush=True)
-		self._app.sio.emit(
-			'subscribe',
-			{
-				'broker_id': self.brokerId,
-				'field': 'ontrade'
-			},
-			namespace='/user'
-		)
-		if self.state == State.LIVE:
-			self._subscribe_charts(self.charts)
+		# self._app.sio.emit(
+		# 	'subscribe',
+		# 	{
+		# 		'broker_id': self.brokerId,
+		# 		'field': 'ontrade'
+		# 	},
+		# 	namespace='/user'
+		# )
+		# if self.state == State.LIVE:
+		# 	self._subscribe_charts(self.charts)
 
 	def _stream_disconnect(self):
 		print('Disconnected, retrying connection...', flush=True)
@@ -1205,9 +1216,10 @@ class Broker(object):
 	def _stream_ontick(self, item):
 		if not self.state == State.STOPPED:
 			try:
-				chart = self.getChart(item['product'], broker=item['broker'])
-				if chart is not None:
-					chart._on_tick(item)
+				if "items" in item:
+					chart = self.getChart(item['product'], broker=item['broker'])
+					if chart is not None and chart._accept_ticks:
+						chart._on_tick(item)
 			except Exception as e:
 				print(traceback.format_exc(), flush=True)
 				self._app.sendScriptStopped()
@@ -1232,7 +1244,7 @@ class Broker(object):
 
 
 	def _stream_ontrade(self, items):
-		if not self.state == State.STOPPED:
+		if self.state == State.LIVE:
 			try:
 				print(items, flush=True)
 				for ref_id, item in items.items():
@@ -1241,7 +1253,7 @@ class Broker(object):
 
 						print(f'ON TRADE RESULT: {result}', flush=True)
 						# Handle result
-						if result is not None and len(result):
+						if result is not None and len(result) and result.get('account_id') == self.accountId:
 							for func in self.ontrade_subs:
 								func(
 									EventItem({

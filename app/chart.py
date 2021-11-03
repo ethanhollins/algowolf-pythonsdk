@@ -90,6 +90,7 @@ class Chart(object):
 		self._end_timestamp = 0
 
 		self._connections = []
+		self._accept_ticks = False
 		self._connected = False
 		self._priority = copy(self.periods)
 
@@ -467,23 +468,24 @@ class Chart(object):
 
 
 	def connectAll(self):
-		periods = [period for period in self.periods if period not in self._connections]
-		# Emit socket ontick subscribe message
-		self.strategy.app.sio.emit(
-			'subscribe',
-			{
-				'broker_id': self.strategy.brokerId,
-				'field': 'ontick',
-				'items': {
-					self.broker: {
-						# self.product: periods
-						self.product: 'all'
-					}
-				}
-			},
-			namespace='/user'
-		)
-		self._connections += periods
+		self._accept_ticks = True
+		# periods = [period for period in self.periods if period not in self._connections]
+		# # Emit socket ontick subscribe message
+		# self.strategy.app.sio.emit(
+		# 	'subscribe',
+		# 	{
+		# 		'broker_id': self.strategy.brokerId,
+		# 		'field': 'ontick',
+		# 		'items': {
+		# 			self.broker: {
+		# 				# self.product: periods
+		# 				self.product: 'all'
+		# 			}
+		# 		}
+		# 	},
+		# 	namespace='/user'
+		# )
+		# self._connections += periods
 
 		while not self._connected and not tl.isWeekend(datetime.utcnow()):
 			time.sleep(1)

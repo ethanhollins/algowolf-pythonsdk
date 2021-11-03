@@ -8,6 +8,8 @@ import time
 import traceback
 import os
 import socketio
+import zmq
+from copy import copy
 from enum import Enum
 from datetime import datetime, timedelta
 from threading import Thread
@@ -43,6 +45,10 @@ class App(object):
 		self.module = None
 		self.indicators = []
 		self.charts = []
+		self.send_queue = []
+		self._msg_queue = {}
+		
+		self._setup_zmq_connections()
 
 		self._script_path = os.path.join(config.get('SCRIPTS_PATH'), self.scriptId)
 		sys.path.append(self._script_path)
@@ -79,6 +85,97 @@ class App(object):
 			namespaces=['/admin', '/user'],
 			headers=headers
 		)
+
+	
+	def _setup_zmq_connections(self):
+		print("[_setup_zmq_connections] START", flush=True)
+		self.zmq_context = zmq.Context()
+
+		# self.zmq_sub_socket = self.zmq_context.socket(zmq.SUB)
+		# self.zmq_sub_socket.connect("tcp://zmq_broker:5556")
+		# self.zmq_sub_socket.setsockopt(zmq.SUBSCRIBE, b'')
+
+		# self.zmq_dealer_socket = self.zmq_context.socket(zmq.DEALER)
+		# self.zmq_dealer_socket.connect("tcp://zmq_broker:5557")
+
+		# self.zmq_poller = zmq.Poller()
+		# self.zmq_poller.register(self.zmq_sub_socket, zmq.POLLIN)
+		# self.zmq_poller.register(self.zmq_dealer_socket, zmq.POLLIN)
+
+		Thread(target=self.zmq_send_loop).start()
+		Thread(target=self.zmq_message_loop).start()
+
+
+	def onCommand(self, message):
+		if self.strategy is not None:
+			if message.get("type") == "ontick":
+				self.strategy.getBroker()._stream_ontick(message["message"])
+
+			elif message.get("type") == "ontrade":
+				if message.get("broker_id") == self.strategy.brokerId:
+					self.strategy.getBroker()._stream_ontrade(message["message"])
+			
+			elif message.get("type") == "response":
+				self._msg_queue[message["message"]["msg_id"]] = message["message"]
+
+
+	def waitResponse(self, msg_id, timeout=60):
+		start = time.time()
+
+		while time.time() - start < timeout:
+			if msg_id in copy(list(self._msg_queue.keys())):
+				res = self._msg_queue[msg_id]
+				del self._msg_queue[msg_id]
+				print('WAIT RECV', flush=True)
+				return res
+			time.sleep(0.01)
+
+		return {
+			'error': 'No response.'
+		}
+
+	
+	def sendRequest(self, message):
+		self.send_queue.append(message)
+
+
+	def zmq_send_loop(self):
+		self.zmq_dealer_socket = self.zmq_context.socket(zmq.DEALER)
+		self.zmq_dealer_socket.connect("tcp://zmq_broker:5557")
+
+		while True:
+			try:
+				if len(self.send_queue):
+					item = self.send_queue[0]
+					del self.send_queue[0]
+					print(f"[Send] Send {item}, {len(self.send_queue)}", flush=True)
+
+					self.zmq_dealer_socket.send_json(item, zmq.NOBLOCK)
+
+			except Exception:
+				print(traceback.format_exc())
+
+			time.sleep(0.001)
+
+
+	def zmq_message_loop(self):
+		self.zmq_sub_socket = self.zmq_context.socket(zmq.SUB)
+		self.zmq_sub_socket.connect("tcp://zmq_broker:5556")
+		self.zmq_sub_socket.setsockopt(zmq.SUBSCRIBE, b'')
+
+		self.zmq_poller = zmq.Poller()
+		self.zmq_poller.register(self.zmq_sub_socket, zmq.POLLIN)
+
+		while True:
+			try:
+				socks = dict(self.zmq_poller.poll())
+
+				if self.zmq_sub_socket in socks:
+					message = self.zmq_sub_socket.recv_json()
+					self.onCommand(message)
+
+			except Exception:
+				print(traceback.format_exc(), flush=True)
 
 
 	# TODO: Add accounts parameter

@@ -126,21 +126,40 @@ class Strategy(object):
 
 	# Account functions
 	def getCurrency(self):
-		return self.getBroker().getAccountInfo(self.accountId)[self.accountId]['currency']
+		result = self.getBroker().getAccountInfo(self.accountId)
+		if result is not None:
+			return result[self.accountId]['currency']
+		else:
+			return None
 
 	def getBalance(self):
-		balance = self.getBroker().getAccountInfo(self.accountId)[self.accountId]['balance']
-		return balance
+		result = self.getBroker().getAccountInfo(self.accountId)
+		if result is not None:
+			return result[self.accountId]['balance']
+		else:
+			return None
 
 	def getProfitLoss(self):
-		return self.getBroker().getAccountInfo(self.accountId)[self.accountId]['pl']
+		result = self.getBroker().getAccountInfo(self.accountId)
+		if result is not None:
+			return result[self.accountId]['pl']
+		else:
+			return None
 
 	def getEquity(self):
-		info = self.getBroker().getAccountInfo(self.accountId)[self.accountId]
-		return info['balance'] + info['pl']
+		result = self.getBroker().getAccountInfo(self.accountId)
+		if result is not None:
+			info = result[self.accountId]
+			return info['balance'] + info['pl']
+		else:
+			return None
 
 	def getMargin(self):
-		return self.getBroker().getAccountInfo(self.accountId)[self.accountId]['margin']
+		result = self.getBroker().getAccountInfo(self.accountId)
+		if result is not None:
+			return result[self.accountId]['margin']
+		else:
+			return None
 
 
 	# Order functions
