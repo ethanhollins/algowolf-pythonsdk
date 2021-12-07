@@ -183,15 +183,16 @@ class DONCH(Indicator):
 		ohlc = ohlc[max((idx)-period, 0):idx]
 		# Check min period met
 		if ohlc.shape[0] < period:
-			return [np.nan]*2
+			return [np.nan]*3
 
-		high_low = [0,0]
+		result = [0,0,0]
 		for i in range(ohlc.shape[0]):
-			if high_low[0] == 0 or ohlc[i,1] > high_low[0]:
-				high_low[0] = ohlc[i][1]
-			if high_low[1] == 0 or ohlc[i,2] < high_low[1]:
-				high_low[1] = ohlc[i,2]
-		return high_low
+			if result[1] == 0 or ohlc[i,1] > result[1]:
+				result[1] = ohlc[i][1]
+			if result[2] == 0 or ohlc[i,2] < result[2]:
+				result[2] = ohlc[i,2]
+			result[0] = (result[1] + result[2]) / 2
+		return result
 
 
 # Exponential Moving Average

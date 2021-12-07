@@ -204,11 +204,11 @@ def _process_chart_data(charts, start, end, spread=None):
 
 						if ind_asks is None and ind_bids is None:
 							ind_asks = np.zeros((bars_df.shape[0], len(asks)), dtype=np.float64)
-							ind_asks[:prev_bars_df.shape[0]] = ind._asks
+							ind_asks[:prev_bars_df.shape[0]] = ind._asks[-prev_bars_df.shape[0]:]
 							ind_mids = np.zeros((bars_df.shape[0], len(mids)), dtype=np.float64)
-							ind_mids[:prev_bars_df.shape[0]] = ind._mids
+							ind_mids[:prev_bars_df.shape[0]] = ind._mids[-prev_bars_df.shape[0]:]
 							ind_bids = np.zeros((bars_df.shape[0], len(bids)), dtype=np.float64)
-							ind_bids[:prev_bars_df.shape[0]] = ind._bids
+							ind_bids[:prev_bars_df.shape[0]] = ind._bids[-prev_bars_df.shape[0]:]
 
 						if bars_start_idx+bars_idx < bars_df.shape[0]:
 							ind_asks[bars_start_idx+bars_idx] = asks

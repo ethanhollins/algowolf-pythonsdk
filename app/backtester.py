@@ -143,7 +143,7 @@ class Backtester(object):
 		# Validate order
 		# self._order_validation(order)
 
-		self.broker.positions.append(order)
+		self.broker.backtest_positions.append(order)
 
 		return order
 
@@ -203,7 +203,7 @@ class Backtester(object):
 		# Validate order
 		# self._order_validation(order)
 
-		self.broker.orders.append(order)
+		self.broker.backtest_orders.append(order)
 
 		return order
 
@@ -239,7 +239,7 @@ class Backtester(object):
 			result = pos
 
 			# Delete position from broker positions
-			del self.broker.positions[self.broker.positions.index(pos)]
+			del self.broker.backtest_positions[self.broker.backtest_positions.index(pos)]
 
 		elif lotsize <= 0:
 			# Raise error
@@ -295,7 +295,7 @@ class Backtester(object):
 
 	def deleteOrder(self, order):
 		order.close_time = self.broker.getTimestamp(order.product)
-		del self.broker.orders[self.broker.orders.index(order)]
+		del self.broker.backtest_orders[self.broker.backtest_orders.index(order)]
 
 		return order
 
@@ -394,7 +394,7 @@ class Backtester(object):
 		pos = tl.BacktestPosition.fromOrder(self.broker, order)
 		pos.open_time = self.broker.getTimestamp(pos.product)
 		pos.order_type = order_type
-		self.broker.positions.append(pos)
+		self.broker.backtest_positions.append(pos)
 
 		ref_id = self.broker.generateReference()
 		res = {
@@ -428,9 +428,9 @@ class Backtester(object):
 						order.close_time = timestamp
 
 						# Delete Order
-						for i in range(len(self.broker.orders)-1,-1,-1):
-							if self.broker.orders[i].order_id == order.order_id:
-								del self.broker.orders[i]
+						for i in range(len(self.broker.backtest_orders)-1,-1,-1):
+							if self.broker.backtest_orders[i].order_id == order.order_id:
+								del self.broker.backtest_orders[i]
 
 						# On Trade
 						self.handleTransaction(res)
@@ -448,9 +448,9 @@ class Backtester(object):
 						order.close_time = timestamp
 						
 						# Delete Order
-						for i in range(len(self.broker.orders)-1,-1,-1):
-							if self.broker.orders[i].order_id == order.order_id:
-								del self.broker.orders[i]
+						for i in range(len(self.broker.backtest_orders)-1,-1,-1):
+							if self.broker.backtest_orders[i].order_id == order.order_id:
+								del self.broker.backtest_orders[i]
 
 						# On Trade
 						self.handleTransaction(res)
@@ -469,9 +469,9 @@ class Backtester(object):
 						order.close_time = timestamp
 
 						# Delete Order
-						for i in range(len(self.broker.orders)-1,-1,-1):
-							if self.broker.orders[i].order_id == order.order_id:
-								del self.broker.orders[i]
+						for i in range(len(self.broker.backtest_orders)-1,-1,-1):
+							if self.broker.backtest_orders[i].order_id == order.order_id:
+								del self.broker.backtest_orders[i]
 
 						# On Trade
 						self.handleTransaction(res)
@@ -489,9 +489,9 @@ class Backtester(object):
 						order.close_time = timestamp
 
 						# Delete Order
-						for i in range(len(self.broker.orders)-1,-1,-1):
-							if self.broker.orders[i].order_id == order.order_id:
-								del self.broker.orders[i]
+						for i in range(len(self.broker.backtest_orders)-1,-1,-1):
+							if self.broker.backtest_orders[i].order_id == order.order_id:
+								del self.broker.backtest_orders[i]
 
 						# On Trade
 						self.handleTransaction(res)
@@ -503,7 +503,7 @@ class Backtester(object):
 	def handleStopLoss(self, product, timestamp, ohlc):
 		ask = ohlc[:4]
 		bid = ohlc[8:]
-		for pos in self.broker.getAllPositions():
+		for pos in self.broker.backtest_positions:
 			if pos.product != product or not pos.sl or not pos.isBacktest():
 				continue
 
@@ -516,7 +516,7 @@ class Backtester(object):
 				pos.close_price = pos.sl
 				pos.close_time = timestamp
 				# Delete Position
-				del self.broker.positions[self.broker.positions.index(pos)]
+				del self.broker.backtest_positions[self.broker.backtest_positions.index(pos)]
 
 				ref_id = self.broker.generateReference()
 				res = {
@@ -537,7 +537,7 @@ class Backtester(object):
 		ask = ohlc[:4]
 		bid = ohlc[8:]
 
-		for pos in self.broker.positions:
+		for pos in self.broker.backtest_positions:
 			if (pos.product != product or not pos.tp or not pos.isBacktest()):
 				continue
 
@@ -551,7 +551,7 @@ class Backtester(object):
 				pos.close_time = timestamp
 
 				# Delete Position
-				del self.broker.positions[self.broker.positions.index(pos)]
+				del self.broker.backtest_positions[self.broker.backtest_positions.index(pos)]
 
 				ref_id = self.broker.generateReference()
 				res = {
@@ -1466,7 +1466,7 @@ class OandaBacktester(Backtester):
 		new_order.order_id = self.broker.generateReference()
 
 		order.close_time = self.broker.getTimestamp(order.product)
-		del self.broker.orders[self.broker.orders.index(order)]
+		del self.broker.backtest_orders[self.broker.backtest_orders.index(order)]
 
 		res = {}
 
@@ -1485,7 +1485,7 @@ class OandaBacktester(Backtester):
 			new_order, lotsize, entry_range, entry_price, sl_range, tp_range, sl_price, tp_price
 		)
 
-		self.broker.orders.append(result)
+		self.broker.backtest_orders.append(result)
 
 		create_ref_id = self.broker.generateReference()
 		timestamp = self.broker.getTimestamp(order.product)
@@ -1544,7 +1544,7 @@ class OandaBacktester(Backtester):
 			pos.order_type = order_type
 			pos.lotsize = remaining
 			pos.open_time = self.broker.getTimestamp(order.product)
-			self.broker.positions.append(pos)
+			self.broker.backtest_positions.append(pos)
 			result.append(pos)
 
 			res.update({

@@ -137,6 +137,8 @@ class Broker(object):
 	# TODO: DO TOKENS INSTEAD and VALIDATION
 	def run(self):
 
+		self._app._setup_zmq_connections()
+
 		strategy_info = self._initialize_strategy()
 		print(strategy_info['brokers'][self.brokerId]['broker'], flush=True)
 		self.setName(strategy_info['brokers'][self.brokerId]['broker'])

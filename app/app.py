@@ -48,7 +48,7 @@ class App(object):
 		self.send_queue = []
 		self._msg_queue = {}
 		
-		self._setup_zmq_connections()
+		# self._setup_zmq_connections()
 
 		self._script_path = os.path.join(config.get('SCRIPTS_PATH'), self.scriptId)
 		sys.path.append(self._script_path)
